@@ -1,3 +1,4 @@
+import itertools as it
 import os
 import subprocess as sp
 
@@ -14,6 +15,11 @@ class NodeInitializer:
     _BMV2_FILENAME = 'bmv2_install.sh'
     _NODE_INIT_PATH = os.path.join(_THIS_DIR, _NODE_INIT_SCRIPT_FILENAME)
     _BMV2_PATH = os.path.join(_THIS_DIR, _BMV2_FILENAME)
+    _HOSTNAMES_TO_ROUTE_VIA_HOST = [
+        'registry-1.docker.io', 'production.cloudflare.docker.com']
+
+    def __init__(self) -> None:
+        self.ips_to_route_via_host = self._resolve_hostnames()
 
     def assing_container_ids(self, cluster_name: str, workers: list[WorkerNode], controls: list[ControlNode]):
         docker_output = sp.run(['sudo', 'docker', 'ps'],
@@ -46,9 +52,17 @@ class NodeInitializer:
 
     def _init_node(self, node: K8sNode):
         self._init_container_requirements(node)
+        node.internal_cluster_iface = iputils.get_interface_info(
+            node.netns_name, self._KIND_IFACE_NAME)
 
         if node.has_p4_nic:
             self._install_bmv2(node)
+
+        host_ip = iputils.get_host_interface_in_network_with(
+            node.internal_cluster_iface.ipv4, node.internal_cluster_iface.netmask)
+
+        for ip in self.ips_to_route_via_host:
+            iputils.add_route(node.netns_name, ip, host_ip)
 
         # iputils.set_netns_iface_state(
         #     node.netns_name, self._KIND_IFACE_NAME, up=False)
@@ -65,3 +79,6 @@ class NodeInitializer:
         containerutils.copy_and_run_script_in_container(
             node.container_id, self._BMV2_PATH, f'/home/{self._BMV2_FILENAME}')
         print(f'Installed bmv2 on: {node.name}')
+
+    def _resolve_hostnames(self) -> list[str]:
+        return list(it.chain(*map(iputils.resolve_ipv4_addresses, self._HOSTNAMES_TO_ROUTE_VIA_HOST)))

@@ -2,4 +2,6 @@
 
 apt update
 
-apt install -y iputils-ping
+apt install -y \
+    iputils-ping \
+    inetutils-traceroute

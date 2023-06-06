@@ -3,7 +3,7 @@ from Kathara.model.Lab import Lab
 
 from ClusterBuilder import ClusterBuilder
 from iputils import NetIface
-from KatharaBackedNet import KatharaBackedNet
+from KatharaBackedNet import KatharaBackedCluster, container_id
 
 lab = Lab("test1")
 
@@ -29,17 +29,17 @@ r2.update_meta(args={
     ]
 })
 
-cb = ClusterBuilder('test-cluster')
-cb.add_worker('w1', with_p4_nic=False)
-cb.add_control('c1', with_p4_nic=False)
+with KatharaBackedCluster('test-cluster', lab) as cb:
+    cb.add_worker('w1', with_p4_nic=False)
+    cb.add_control('c1', with_p4_nic=False)
 
-with KatharaBackedNet(cb, lab):
     cb.connect_with_container('w1', NetIface(
-        'eth10k', '10.10.2.2', 24), r2.api_object.id, NetIface('eth10c', '10.10.2.1', 24))
+        'eth10k', '10.10.2.2', 24), container_id(r2), NetIface('eth10c', '10.10.2.1', 24))
     cb.connect_with_container('c1', NetIface(
-        'eth10k', '10.10.0.2', 24), r1.api_object.id, NetIface('eth10c', '10.10.0.1', 24))
-    print('DEBUG')
+        'eth10k', '10.10.0.2', 24), container_id(r1), NetIface('eth10c', '10.10.0.1', 24))
 
+    cb.build()
+    print('DEBUG')
 
 # cb.destroy()
 # Kathara.get_instance().undeploy_lab(lab_name=lab.name)
