@@ -3,9 +3,7 @@ import subprocess as sp
 
 import containerutils
 import iputils
-from ControlNode import ControlNode
-from K8sNode import K8sNode
-from WorkerNode import WorkerNode
+from K8sNode import ControlNode, K8sNode, WorkerNode
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -38,21 +36,22 @@ class NodeInitializer:
 
     def init_worker(self, node: WorkerNode):
         print(f'Initializing worker: {node.name}')
+        self._init_node(node)
+        print(f'worker: {node.name} ready')
+
+    def init_control(self, node: ControlNode):
+        print(f'Initializing control plane node: {node.name}')
+        self._init_node(node)
+        print(f'control plane node: {node.name} ready')
+
+    def _init_node(self, node: K8sNode):
         self._init_container_requirements(node)
 
         if node.has_p4_nic:
             self._install_bmv2(node)
 
-        iputils.set_netns_iface_state(
-            node.netns_name, self._KIND_IFACE_NAME, up=False)
-        print(f'worker: {node.name} ready')
-
-    def init_control(self, node: ControlNode):
-        print(f'Initializing control plane node: {node.name}')
-        self._init_container_requirements(node)
-        iputils.set_netns_iface_state(
-            node.netns_name, self._KIND_IFACE_NAME, up=False)
-        print(f'control plane node: {node.name} ready')
+        # iputils.set_netns_iface_state(
+        #     node.netns_name, self._KIND_IFACE_NAME, up=False)
 
     def _init_container_requirements(self, node: K8sNode):
         containerutils.copy_and_run_script_in_container(

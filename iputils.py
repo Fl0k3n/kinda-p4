@@ -1,27 +1,36 @@
 import subprocess as sp
+from dataclasses import dataclass
+
+
+@dataclass
+class NetIface:
+    name: str
+    ipv4: str
+    netmask: int
 
 
 def run_in_namespace(netns: str, *commands: list[str]):
     return sp.run(['sudo', 'ip', 'netns', 'exec', netns, *commands])
 
 
-def set_netns_iface_state(netns: str, iface: str, up: bool):
-    run_in_namespace(netns, 'ip', 'link', 'set', iface, 'up' if up else 'down')
+def set_netns_iface_state(netns: str, iface_name: str, up: bool):
+    run_in_namespace(netns, 'ip', 'link', 'set',
+                     iface_name, 'up' if up else 'down')
 
 
-def assign_ipv4(netns: str, iface: str, ipv4: str, netmask: int):
+def assign_ipv4(netns: str, iface: NetIface):
     run_in_namespace(netns, 'ip', 'address', 'add',
-                     f'{ipv4}/{netmask}', 'dev', iface)
+                     f'{iface.ipv4}/{iface.netmask}', 'dev', iface.name)
 
 
-def connect_namespaces(netns1: str, netns2: str, iface1_name: str, iface2_name: str, set_up: bool = True):
-    run_in_namespace(netns1, 'ip', 'link',  'add', iface1_name,
-                     'type', 'veth', 'peer', 'name', iface2_name)
-    run_in_namespace(netns1, 'ip', 'link', 'set', iface2_name, 'netns', netns2)
+def connect_namespaces(netns1: str, netns2: str, iface1: NetIface, iface2: NetIface, set_up: bool = True):
+    run_in_namespace(netns1, 'ip', 'link',  'add', iface1.name,
+                     'type', 'veth', 'peer', 'name', iface2.name)
+    run_in_namespace(netns1, 'ip', 'link', 'set', iface2.name, 'netns', netns2)
 
     if set_up:
-        set_netns_iface_state(netns1, iface1_name, True)
-        set_netns_iface_state(netns2, iface2_name, True)
+        set_netns_iface_state(netns1, iface1.name, True)
+        set_netns_iface_state(netns2, iface2.name, True)
 
 
 def add_default_route(netns: str, gateway_ipv4: str):

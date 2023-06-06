@@ -7,6 +7,10 @@ def get_container_pid(container_id: str) -> str:
     return output.stdout.strip()
 
 
+def create_namespace_name(container_pid: str) -> str:
+    return f'ns_{container_pid}'
+
+
 def attach_netns_to_host(container_pid: str, netns_name: str):
     sp.run(['sudo', 'ip', 'netns', 'attach', netns_name, container_pid])
 
