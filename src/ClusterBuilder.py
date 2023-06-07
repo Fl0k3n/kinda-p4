@@ -21,6 +21,11 @@ class ConnectionTask(NamedTuple):
     add_default_route_via_container: bool
 
 
+class BridgeInfo(NamedTuple):
+    container_ns: str
+    br_name: str
+
+
 class ClusterBuilder:
     KUBECONFIG_PATH = os.path.join(os.environ['HOME'], '.kube', 'config')
     KIND_TIMEOUT_SECONDS = 120
@@ -80,6 +85,9 @@ class ClusterBuilder:
 
     def connect_with_container(self, node_name: str, node_iface: NetIface, container_id: str, container_iface: NetIface,
                                add_default_route_via_container: bool = True):
+        assert node_name not in set([x.node_name for x in self.connect_tasks]
+                                    ), f'Node {node_name} is already connected to a container'
+
         self.connect_tasks.append(ConnectionTask(
             node_name, node_iface, container_id, container_iface, add_default_route_via_container))
 
@@ -89,17 +97,22 @@ class ClusterBuilder:
         self.internet_access_requested = True
 
     def _setup_connections(self):
+        bridge_to_slaves: dict[BridgeInfo, list[NetIface]] = {}
+
         for node_name, node_iface, container_id, container_iface, add_default_route_via_container in self.connect_tasks:
             node = self._get_node(node_name)
             node.net_iface = node_iface
+
             container_ns = self._attach_container_namespace_to_host(
                 container_id)
+            bridge_slave_iface = self._create_bridge_and_get_slave_meta(
+                container_ns, container_iface, bridge_to_slaves)
 
             iputils.connect_namespaces(
-                node.netns_name, container_ns, node_iface, container_iface)
-
+                node.netns_name, container_ns, node_iface, bridge_slave_iface)
+            iputils.assign_bridge_master(
+                container_ns, bridge_slave_iface, container_iface)
             iputils.assign_ipv4(node.netns_name, node_iface)
-            iputils.assign_ipv4(container_ns, container_iface)
 
             if add_default_route_via_container:
                 iputils.add_default_route(
@@ -188,6 +201,19 @@ class ClusterBuilder:
             containerutils.attach_netns_to_host(pid, container_ns)
 
         return container_ns
+
+    def _create_bridge_and_get_slave_meta(self, container_ns: str, bridge: NetIface, bridge_to_slaves: dict[BridgeInfo, list[NetIface]]) -> NetIface:
+        bridge_info = BridgeInfo(container_ns, bridge.name)
+
+        if bridge_info not in bridge_to_slaves:
+            bridge_to_slaves[bridge_info] = []
+            iputils.create_bridge(container_ns, bridge)
+
+        bridge_slave_iface = NetIface(
+            f'{bridge.name}_slave{len(bridge_to_slaves[bridge_info])}', None, None)
+        bridge_to_slaves[bridge_info].append(bridge_slave_iface)
+
+        return bridge_slave_iface
 
     @property
     def workers(self) -> list[WorkerNode]:

@@ -39,21 +39,21 @@ with KatharaBackedCluster('test-cluster', network) as cluster:
         'w1',
         node_iface=NetIface('eth10k', '10.10.2.2', 24),
         container_id=container_id(r2),
-        container_iface=NetIface('eth10c', '10.10.2.', 24)
+        container_iface=NetIface('br_1c', '10.10.2.1', 24)
     )
 
     cluster.connect_with_container(
         'w2',
-        node_iface=NetIface('eth11k', '10.10.2.4', 24),
+        node_iface=NetIface('eth10k', '10.10.2.3', 24),
         container_id=container_id(r2),
-        container_iface=NetIface('eth11c', '10.10.2.3', 24)
+        container_iface=NetIface('br_1c', '10.10.2.1', 24)
     )
 
     cluster.connect_with_container(
         'c1',
-        node_iface=NetIface('eth12k', '10.10.0.2', 24),
+        node_iface=NetIface('eth10k', '10.10.0.2', 24),
         container_id=container_id(r1),
-        container_iface=NetIface('eth12c', '10.10.0.1', 24)
+        container_iface=NetIface('eth10c', '10.10.0.1', 24)
     )
 
     cluster.build()

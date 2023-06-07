@@ -24,13 +24,17 @@ class InternetAccessManager:
         self._setup_address_translations()
 
     def teardown_internet_access(self):
-        iputils.set_bridged_traffic_masquerading(self.host_bridge, False)
-        iputils.delete_iface(self.host_veth)
-        iputils.delete_iface(self.host_bridge)
+        try:
+            iputils.set_bridged_traffic_masquerading(
+                None, self.host_bridge, False)
+            iputils.delete_iface(None, self.host_veth)
+            iputils.delete_iface(None, self.host_bridge)
+        except:
+            pass  # ignore
 
     def _create_host_bridge(self):
         self.host_bridge = self._get_host_bridge_meta()
-        iputils.create_bridge(self.host_bridge)
+        iputils.create_bridge(None, self.host_bridge)
 
     def _connect_gateway_to_bridge(self):
         self.host_veth = NetIface(
@@ -49,8 +53,8 @@ class InternetAccessManager:
             self.internet_gateway_container_netns, self.host_bridge.ipv4)
 
     def _setup_address_translations(self):
-        iputils.set_forwarding_through(self.host_bridge, True)
-        iputils.set_bridged_traffic_masquerading(self.host_bridge, True)
+        iputils.set_forwarding_through(None, self.host_bridge, True)
+        iputils.set_bridged_traffic_masquerading(None, self.host_bridge, True)
         for cluster_node in self.cluster_nodes:
             iputils.masquerade_internet_facing_traffic(
                 self.internet_gateway_container_netns, cluster_node.net_iface, self.container_veth)
