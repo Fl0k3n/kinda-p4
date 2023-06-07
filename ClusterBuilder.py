@@ -7,6 +7,7 @@ from typing import IO, NamedTuple
 
 import containerutils
 import iputils
+from InternetAccessManager import InternetAccessManager
 from iputils import NetIface
 from K8sNode import ControlNode, K8sNode, WorkerNode
 from NodeInitializer import NodeInitializer
@@ -26,13 +27,15 @@ class ClusterBuilder:
     NODE_INIT_TIMEOUT_SECONDS = 300
     MAX_POOL_SIZE = 32
 
-    def __init__(self, name: str, node_initializer: NodeInitializer = None) -> None:
+    def __init__(self, name: str, node_initializer: NodeInitializer, internet_access_mgr: InternetAccessManager) -> None:
         self.name = name
+        self.node_initializer = node_initializer
+        self.internet_access_mgr = internet_access_mgr
         self.control_nodes: dict[str, ControlNode] = {}
         self.worker_nodes: dict[str, WorkerNode] = {}
-        self.node_initializer = node_initializer if node_initializer is not None else NodeInitializer()
+        self.internet_access_requested = False
 
-        self.container_netns = []
+        self.container_netns = set()
         self.connect_tasks: list[ConnectionTask] = []
 
     def add_control(self, name: str, with_p4_nic: bool = False):
@@ -52,12 +55,20 @@ class ClusterBuilder:
         self._setup_connections()
         self._update_cluster_address_translatations()
 
+        if self.internet_access_requested:
+            print("Provisioning itnernet access...")
+            self.internet_access_mgr.provision_internet_access(
+                self.controls + self.workers)
+
         print("Updating kubectl...")
         self._update_kubectl_cfg()
 
         print("Cluster ready")
 
     def destroy(self):
+        if self.internet_access_requested:
+            self.internet_access_mgr.teardown_internet_access()
+
         sp.run(['sudo', 'kind', 'delete', 'clusters', self.name])
         self._clear_attached_namespaces()
 
@@ -66,16 +77,18 @@ class ClusterBuilder:
         self.connect_tasks.append(ConnectionTask(
             node_name, node_iface, container_id, container_iface, add_default_route_via_container))
 
+    def enable_internet_access_via(self, container_id: str):
+        self.internet_access_mgr.internet_gateway_container_netns = self._attach_container_namespace_to_host(
+            container_id)
+        self.internet_access_requested = True
+
     def _setup_connections(self):
         for node_name, node_iface, container_id, container_iface, add_default_route_via_container in self.connect_tasks:
             node = self._get_node(node_name)
             node.net_iface = node_iface
-            pid = containerutils.get_container_pid(container_id)
-            container_ns = containerutils.create_namespace_name(pid)
+            container_ns = self._attach_container_namespace_to_host(
+                container_id)
 
-            self.container_netns.append(container_ns)
-
-            containerutils.attach_netns_to_host(pid, container_ns)
             iputils.connect_namespaces(
                 node.netns_name, container_ns, node_iface, container_iface)
 
@@ -85,6 +98,8 @@ class ClusterBuilder:
             if add_default_route_via_container:
                 iputils.add_default_route(
                     node.netns_name, container_iface.ipv4)
+
+        self.connect_tasks.clear()
 
     def _run_cluster(self):
         with tempfile.NamedTemporaryFile() as kind_cfg_file:
@@ -99,7 +114,6 @@ class ClusterBuilder:
             iputils.add_dnat_rule(
                 node1.netns_name, node1.internal_cluster_iface.ipv4,
                 node2.internal_cluster_iface.ipv4, node2.net_iface.ipv4)
-
             iputils.add_dnat_rule(
                 node2.netns_name, node2.internal_cluster_iface.ipv4,
                 node1.internal_cluster_iface.ipv4, node1.net_iface.ipv4
@@ -156,6 +170,16 @@ class ClusterBuilder:
 
         for ns in nss_to_remove:
             sp.run(['sudo', 'ip', 'netns', 'delete', ns])
+
+    def _attach_container_namespace_to_host(self, container_id: str) -> str:
+        pid = containerutils.get_container_pid(container_id)
+        container_ns = containerutils.create_namespace_name(pid)
+
+        if container_ns not in self.container_netns:
+            self.container_netns.add(container_ns)
+            containerutils.attach_netns_to_host(pid, container_ns)
+
+        return container_ns
 
     @property
     def workers(self) -> list[WorkerNode]:

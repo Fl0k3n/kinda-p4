@@ -11,13 +11,25 @@ class NetIface:
     netmask: int
 
 
+def _run_sp(*commands: list[str]) -> sp.CompletedProcess[str]:
+    return sp.run([*commands], capture_output=True, text=True)
+
+
+def _iptables_mode(enabled: bool) -> str:
+    return '-A' if enabled else '-D'
+
+
 def run_in_namespace(netns: str, *commands: list[str]) -> sp.CompletedProcess[str]:
-    return sp.run(['sudo', 'ip', 'netns', 'exec', netns, *commands], capture_output=True, text=True)
+    return _run_sp('sudo', 'ip', 'netns', 'exec', netns, *commands)
 
 
 def set_netns_iface_state(netns: str, iface_name: str, up: bool):
     run_in_namespace(netns, 'ip', 'link', 'set',
                      iface_name, 'up' if up else 'down')
+
+
+def set_iface_state(iface_name: str, up: bool):
+    _run_sp('sudo', 'ip', 'link', 'set', iface_name, 'up' if up else 'down')
 
 
 def assign_ipv4(netns: str, iface: NetIface):
@@ -60,7 +72,7 @@ def get_interface_info(netns: str, iface_name: str) -> NetIface:
 def get_host_interface_in_network_with(ipv4: str, netmask: int) -> str:
     # TODO
     assert netmask == 16, 'assuming /16 mask'
-    output = sp.run(['ip', 'address'], capture_output=True, text=True).stdout
+    output = _run_sp('ip', 'address').stdout
     return re.search(f'inet\s({".".join(ipv4.split(".")[:2])}\.\d+\.\d+)/{netmask}', output).group(1)
 
 
@@ -76,3 +88,46 @@ def resolve_ipv4_addresses(hostname: str) -> list[str]:
     assert addrs, f'Failed to resolve {hostname}'
 
     return list(set(addrs))
+
+
+def create_bridge(bridge: NetIface):
+    _run_sp('sudo', 'ip', 'link', 'add', bridge.name, 'type', 'bridge')
+    _run_sp('sudo', 'ip', 'address', 'add',
+            f'{bridge.ipv4}/{bridge.netmask}', 'dev', bridge.name)
+    set_iface_state(bridge.name, True)
+
+
+def connect_container_to_bridge(bridge: NetIface, host_veth: NetIface, container_veth: NetIface, container_netns: str):
+    _run_sp('sudo', 'ip', 'link', 'add', host_veth.name,
+            'type', 'veth', 'peer', 'name', container_veth.name)
+    _run_sp('sudo', 'ip', 'link', 'set',
+            container_veth.name, 'netns', container_netns)
+
+    assign_ipv4(container_netns, container_veth)
+    set_iface_state(host_veth.name, True)
+    set_netns_iface_state(container_netns, container_veth.name, True)
+
+    _run_sp('sudo', 'ip', 'link', 'set', host_veth.name, 'master', bridge.name)
+
+
+def set_forwarding_through(iface: NetIface, enabled: bool):
+    mode = _iptables_mode(enabled)
+    _run_sp('sudo', 'iptables', mode, 'FORWARD',
+            '-o', iface.name, '-j', 'ACCEPT')
+    _run_sp('sudo', 'iptables', mode, 'FORWARD',
+            '-i', iface.name, '-j', 'ACCEPT')
+
+
+def set_bridged_traffic_masquareding(bridge: NetIface, enabled: bool):
+    mode = _iptables_mode(enabled)
+    _run_sp('sudo', 'iptables', '-t', 'nat', mode, 'POSTROUTING', '-s',
+            f'{bridge.ipv4}/{bridge.netmask}', '!', '-o', bridge.name, '-j', 'MASQUERADE')
+
+
+def masquarade_internet_facing_traffic(netns: str, src_iface: NetIface, forwarding_iface: NetIface):
+    run_in_namespace(netns, 'iptables', '-t', 'nat', '-A', 'POSTROUTING', '-s',
+                     f'{src_iface.ipv4}/{src_iface.netmask}', '-o', forwarding_iface.name, '-j', 'MASQUERADE')
+
+
+def delete_iface(iface: NetIface):
+    _run_sp('sudo', 'ip', 'link', 'del', iface.name)

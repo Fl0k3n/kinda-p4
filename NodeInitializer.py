@@ -29,13 +29,9 @@ class NodeInitializer:
 
         for line in docker_output.stdout.splitlines():
             if cluster_name in line:
-                parts = line.split()
-                if 'worker' in line:
-                    worker = next(workers_iter)
-                    worker.container_id = parts[0]
-                else:
-                    control = next(controls_iter)
-                    control.container_id = parts[0]
+                node = next(workers_iter) if 'worker' in line else next(
+                    controls_iter)
+                node.container_id = line.split()[0]
 
         assert next(workers_iter, None) is None and next(controls_iter, None) is None, \
             'Failed to assign container ids to some nodes'

@@ -1,14 +1,12 @@
-from Kathara.manager.Kathara import Kathara
 from Kathara.model.Lab import Lab
 
-from ClusterBuilder import ClusterBuilder
 from iputils import NetIface
 from KatharaBackedNet import KatharaBackedCluster, container_id
 
-lab = Lab("test1")
+network = Lab("test1")
 
-r1 = lab.get_or_new_machine('r1')
-lab.connect_machine_to_link(r1.name, 'B')
+r1 = network.get_or_new_machine('r1')
+network.connect_machine_to_link(r1.name, 'B')
 
 r1.update_meta(args={
     "image": "kathara/base",
@@ -18,28 +16,37 @@ r1.update_meta(args={
     ]
 })
 
-r2 = lab.get_or_new_machine('r2')
-lab.connect_machine_to_link(r2.name, 'B')
+r2 = network.get_or_new_machine('r2')
+network.connect_machine_to_link(r2.name, 'B')
 
 r2.update_meta(args={
     "image": "kathara/base",
     "exec_commands": [
         "ifconfig eth0 10.10.1.2/24 up",
-        "route add -net 10.10.0.0/24 gw 10.10.1.1 dev eth0"
+        "route add -net 10.10.0.0/24 gw 10.10.1.1 dev eth0",
+        # "ip route add default via 10.10.1.1"
     ]
 })
 
-with KatharaBackedCluster('test-cluster', lab) as cb:
-    cb.add_worker('w1', with_p4_nic=False)
-    cb.add_control('c1', with_p4_nic=False)
+with KatharaBackedCluster('test-cluster', network) as cluster:
+    cluster.enable_internet_access_via(container_id(r1))
 
-    cb.connect_with_container('w1', NetIface(
-        'eth10k', '10.10.2.2', 24), container_id(r2), NetIface('eth10c', '10.10.2.1', 24))
-    cb.connect_with_container('c1', NetIface(
-        'eth10k', '10.10.0.2', 24), container_id(r1), NetIface('eth10c', '10.10.0.1', 24))
+    cluster.add_worker('w1', with_p4_nic=False)
+    cluster.add_control('c1', with_p4_nic=False)
 
-    cb.build()
+    cluster.connect_with_container(
+        'w1',
+        node_iface=NetIface('eth10k', '10.10.2.2', 24),
+        container_id=container_id(r2),
+        container_iface=NetIface('eth10c', '10.10.2.1', 24)
+    )
+
+    cluster.connect_with_container(
+        'c1',
+        node_iface=NetIface('eth10k', '10.10.0.2', 24),
+        container_id=container_id(r1),
+        container_iface=NetIface('eth10c', '10.10.0.1', 24)
+    )
+
+    cluster.build()
     print('DEBUG')
-
-# cb.destroy()
-# Kathara.get_instance().undeploy_lab(lab_name=lab.name)

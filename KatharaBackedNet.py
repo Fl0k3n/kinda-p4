@@ -3,11 +3,14 @@ from Kathara.model.Lab import Lab as KatharaLab
 from Kathara.model.Machine import Machine as KatharaMachine
 
 from ClusterBuilder import ClusterBuilder
+from InternetAccessManager import InternetAccessManager
+from NodeInitializer import NodeInitializer
 
 
 class KatharaBackedCluster:
     def __init__(self, cluster_name: str, kathara_lab: KatharaLab) -> None:
-        self.cluster_builder = ClusterBuilder(cluster_name)
+        self.cluster_builder = ClusterBuilder(
+            cluster_name, NodeInitializer(), InternetAccessManager())
         self.kathara_lab = kathara_lab
 
     def __enter__(self) -> ClusterBuilder:
