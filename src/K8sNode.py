@@ -1,6 +1,6 @@
 from abc import ABC
 
-from iputils import NetIface
+from util.iputils import NetIface
 
 
 class K8sNode(ABC):

@@ -69,7 +69,7 @@ def get_interface_info(netns: str, iface_name: str) -> NetIface:
         f"Failed to get interface info for {iface_name}, got {iface_data}")
 
 
-def get_host_interface_in_network_with(ipv4: str, netmask: int) -> str:
+def get_host_ipv4_in_network_with(ipv4: str, netmask: int) -> str:
     # TODO
     assert netmask == 16, 'assuming /16 mask'
     output = _run_sp('ip', 'address').stdout
@@ -81,7 +81,7 @@ def add_dnat_rule(netns: str, src_ipv4: str, prev_dest_ipv4: str, new_dest_ipv4:
                      prev_dest_ipv4, '-s', src_ipv4, '-j', 'DNAT', '--to-destination', new_dest_ipv4)
 
 
-def resolve_ipv4_addresses(hostname: str) -> list[str]:
+def resolve_hostnames_to_ipv4(hostname: str) -> list[str]:
     addrs = [res[4][0] for res in socket.getaddrinfo(
         hostname, None, family=socket.AF_INET)]
 
@@ -118,13 +118,13 @@ def set_forwarding_through(iface: NetIface, enabled: bool):
             '-i', iface.name, '-j', 'ACCEPT')
 
 
-def set_bridged_traffic_masquareding(bridge: NetIface, enabled: bool):
+def set_bridged_traffic_masquerading(bridge: NetIface, enabled: bool):
     mode = _iptables_mode(enabled)
     _run_sp('sudo', 'iptables', '-t', 'nat', mode, 'POSTROUTING', '-s',
             f'{bridge.ipv4}/{bridge.netmask}', '!', '-o', bridge.name, '-j', 'MASQUERADE')
 
 
-def masquarade_internet_facing_traffic(netns: str, src_iface: NetIface, forwarding_iface: NetIface):
+def masquerade_internet_facing_traffic(netns: str, src_iface: NetIface, forwarding_iface: NetIface):
     run_in_namespace(netns, 'iptables', '-t', 'nat', '-A', 'POSTROUTING', '-s',
                      f'{src_iface.ipv4}/{src_iface.netmask}', '-o', forwarding_iface.name, '-j', 'MASQUERADE')
 

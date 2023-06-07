@@ -14,10 +14,24 @@ class KatharaBackedCluster:
         self.kathara_lab = kathara_lab
 
     def __enter__(self) -> ClusterBuilder:
-        Kathara.get_instance().deploy_lab(self.kathara_lab)
-        return self.cluster_builder
+        return self._setup(first_try=True)
 
     def __exit__(self, *args):
+        self._cleanup()
+
+    def _setup(self, first_try: bool) -> ClusterBuilder:
+        try:
+            Kathara.get_instance().deploy_lab(self.kathara_lab)
+            return self.cluster_builder
+        except:
+            if first_try:
+                self._cleanup()
+            else:
+                raise
+
+            return self._setup(first_try=False)
+
+    def _cleanup(self):
         self.cluster_builder.destroy()
         Kathara.get_instance().undeploy_lab(lab_name=self.kathara_lab.name)
 

@@ -1,7 +1,7 @@
 from Kathara.model.Lab import Lab
 
-from iputils import NetIface
 from KatharaBackedNet import KatharaBackedCluster, container_id
+from util.iputils import NetIface
 
 network = Lab("test1")
 
@@ -24,7 +24,7 @@ r2.update_meta(args={
     "exec_commands": [
         "ifconfig eth0 10.10.1.2/24 up",
         "route add -net 10.10.0.0/24 gw 10.10.1.1 dev eth0",
-        # "ip route add default via 10.10.1.1"
+        "ip route add default via 10.10.1.1"
     ]
 })
 
@@ -32,20 +32,28 @@ with KatharaBackedCluster('test-cluster', network) as cluster:
     cluster.enable_internet_access_via(container_id(r1))
 
     cluster.add_worker('w1', with_p4_nic=False)
+    cluster.add_worker('w2', with_p4_nic=False)
     cluster.add_control('c1', with_p4_nic=False)
 
     cluster.connect_with_container(
         'w1',
         node_iface=NetIface('eth10k', '10.10.2.2', 24),
         container_id=container_id(r2),
-        container_iface=NetIface('eth10c', '10.10.2.1', 24)
+        container_iface=NetIface('eth10c', '10.10.2.', 24)
+    )
+
+    cluster.connect_with_container(
+        'w2',
+        node_iface=NetIface('eth11k', '10.10.2.4', 24),
+        container_id=container_id(r2),
+        container_iface=NetIface('eth11c', '10.10.2.3', 24)
     )
 
     cluster.connect_with_container(
         'c1',
-        node_iface=NetIface('eth10k', '10.10.0.2', 24),
+        node_iface=NetIface('eth12k', '10.10.0.2', 24),
         container_id=container_id(r1),
-        container_iface=NetIface('eth10c', '10.10.0.1', 24)
+        container_iface=NetIface('eth12c', '10.10.0.1', 24)
     )
 
     cluster.build()

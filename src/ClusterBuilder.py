@@ -5,12 +5,12 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import IO, NamedTuple
 
-import containerutils
-import iputils
+import util.containerutils as containerutils
+import util.iputils as iputils
 from InternetAccessManager import InternetAccessManager
-from iputils import NetIface
 from K8sNode import ControlNode, K8sNode, WorkerNode
 from NodeInitializer import NodeInitializer
+from util.iputils import NetIface
 
 
 class ConnectionTask(NamedTuple):
@@ -34,6 +34,7 @@ class ClusterBuilder:
         self.control_nodes: dict[str, ControlNode] = {}
         self.worker_nodes: dict[str, WorkerNode] = {}
         self.internet_access_requested = False
+        self.built = False
 
         self.container_netns = set()
         self.connect_tasks: list[ConnectionTask] = []
@@ -45,6 +46,10 @@ class ClusterBuilder:
         self.worker_nodes[name] = WorkerNode(name, with_p4_nic)
 
     def build(self):
+        if self.built:
+            print("Cluster is already built")
+            return
+
         print('Building cluster...')
         self._run_cluster()
 
@@ -63,6 +68,7 @@ class ClusterBuilder:
         print("Updating kubectl...")
         self._update_kubectl_cfg()
 
+        self.built = True
         print("Cluster ready")
 
     def destroy(self):
@@ -146,11 +152,13 @@ class ClusterBuilder:
             worker_tasks = [executor.submit(
                 self.node_initializer.init_worker, worker) for worker in self.workers]
 
-            tasks_result = wait([*worker_tasks, *control_tasks],
-                                timeout=self.NODE_INIT_TIMEOUT_SECONDS)
+            tasks = worker_tasks + control_tasks
+            tasks_result = wait(tasks, timeout=self.NODE_INIT_TIMEOUT_SECONDS)
 
             if tasks_result.not_done:
-                print('some tasks failed')  # TODO
+                print("some tasks didn't finish")
+            elif any([task.exception() for task in tasks]):
+                print("some tasks finished with an exception")
 
     def _update_kubectl_cfg(self):
         kubeconfig = sp.run(['sudo', 'kind', 'get', 'kubeconfig',

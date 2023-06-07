@@ -1,8 +1,8 @@
 import random
 
-import iputils
-from iputils import NetIface
+import util.iputils as iputils
 from K8sNode import K8sNode
+from util.iputils import NetIface
 
 
 class InternetAccessManager:
@@ -24,7 +24,7 @@ class InternetAccessManager:
         self._setup_address_translations()
 
     def teardown_internet_access(self):
-        iputils.set_bridged_traffic_masquareding(self.host_bridge, False)
+        iputils.set_bridged_traffic_masquerading(self.host_bridge, False)
         iputils.delete_iface(self.host_veth)
         iputils.delete_iface(self.host_bridge)
 
@@ -50,9 +50,9 @@ class InternetAccessManager:
 
     def _setup_address_translations(self):
         iputils.set_forwarding_through(self.host_bridge, True)
-        iputils.set_bridged_traffic_masquareding(self.host_bridge, True)
+        iputils.set_bridged_traffic_masquerading(self.host_bridge, True)
         for cluster_node in self.cluster_nodes:
-            iputils.masquarade_internet_facing_traffic(
+            iputils.masquerade_internet_facing_traffic(
                 self.internet_gateway_container_netns, cluster_node.net_iface, self.container_veth)
 
     def _get_host_bridge_meta(self) -> NetIface:
@@ -61,7 +61,7 @@ class InternetAccessManager:
         base_subnet = 64
         for subnet in range(base_subnet, 255):
             try:
-                iputils.get_host_interface_in_network_with(
+                iputils.get_host_ipv4_in_network_with(
                     f'172.{subnet}.0.0', 16)
             except:
                 return NetIface(name, f'172.{subnet}.0.1', 16)
