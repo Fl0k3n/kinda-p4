@@ -3,8 +3,10 @@ import re
 import socket
 import subprocess as sp
 from dataclasses import dataclass
+from typing import NamedTuple
 
-HOST_NS = None
+Netns = str | None
+HOST_NS: Netns = None
 
 
 @dataclass
@@ -14,7 +16,12 @@ class NetIface:
     netmask: int
 
 
+class Cidr(NamedTuple):
+    ipv4: str
+    netmask: int
+
 # TODO error handling
+
 
 def _run_sp(*commands: list[str], log_error=True) -> sp.CompletedProcess[str]:
     res = sp.run(['sudo', *commands], capture_output=True, text=True)
@@ -28,7 +35,7 @@ def _iptables_mode(enabled: bool) -> str:
     return '-A' if enabled else '-D'
 
 
-def run_in_namespace(netns: str | None, *commands: list[str], log_error=True) -> sp.CompletedProcess[str]:
+def run_in_namespace(netns: Netns, *commands: list[str], log_error=True) -> sp.CompletedProcess[str]:
     if netns is not None:
         return _run_sp('ip', 'netns', 'exec', netns, *commands, log_error=log_error)
     return _run_sp(*commands, log_error=log_error)
@@ -38,7 +45,7 @@ def random_iface_suffix() -> str:
     return str(random.randint(10000, 100000))
 
 
-def create_veth_pair(netns: str | None, iface1: NetIface, iface2: NetIface, set_up: bool = False):
+def create_veth_pair(netns: Netns, iface1: NetIface, iface2: NetIface, set_up: bool = False):
     run_in_namespace(netns, 'ip', 'link', 'add', iface1.name,
                      'type', 'veth', 'peer', 'name', iface2.name)
 
@@ -47,22 +54,22 @@ def create_veth_pair(netns: str | None, iface1: NetIface, iface2: NetIface, set_
         set_iface_state(netns, iface2.name, True)
 
 
-def move_iface_to_netns(src_ns: str | None, dest_ns: str | None, iface: NetIface):
+def move_iface_to_netns(src_ns: Netns, dest_ns: Netns, iface: NetIface):
     assert src_ns != dest_ns
     run_in_namespace(src_ns, 'ip', 'link', 'set', iface.name, 'netns', dest_ns)
 
 
-def set_iface_state(netns: str | None, iface_name: str, up: bool):
+def set_iface_state(netns: Netns, iface_name: str, up: bool):
     run_in_namespace(netns, 'ip', 'link', 'set',
                      iface_name, 'up' if up else 'down')
 
 
-def assign_ipv4(netns: str | None, iface: NetIface):
+def assign_ipv4(netns: Netns, iface: NetIface):
     run_in_namespace(netns, 'ip', 'address', 'add',
                      f'{iface.ipv4}/{iface.netmask}', 'dev', iface.name)
 
 
-def connect_namespaces(netns1: str | None, netns2: str | None, iface1: NetIface, iface2: NetIface, set_up: bool = True):
+def connect_namespaces(netns1: Netns, netns2: Netns, iface1: NetIface, iface2: NetIface, set_up: bool = True):
     assert netns1 != netns2
     create_veth_pair(netns1, iface1, iface2)
     move_iface_to_netns(netns1, netns2, iface2)
@@ -72,17 +79,17 @@ def connect_namespaces(netns1: str | None, netns2: str | None, iface1: NetIface,
         set_iface_state(netns2, iface2.name, True)
 
 
-def add_default_route(netns: str | None, gateway_ipv4: str):
+def add_default_route(netns: Netns, gateway_ipv4: str):
     run_in_namespace(netns, 'ip', 'route', 'del', 'default', log_error=False)
     run_in_namespace(netns, 'ip', 'route', 'add',
                      'default', 'via', gateway_ipv4)
 
 
-def add_route(netns: str | None, dest_ipv4: str, next_hop: str):
+def add_route(netns: Netns, dest_ipv4: str, next_hop: str):
     run_in_namespace(netns, 'ip', 'route', 'add', dest_ipv4, 'via', next_hop)
 
 
-def get_interface_info(netns: str | None, iface_name: str) -> NetIface:
+def get_interface_info(netns: Netns, iface_name: str) -> NetIface:
     iface_data = run_in_namespace(
         netns, 'ip', 'address', 'show', 'dev', iface_name).stdout
 
@@ -101,7 +108,7 @@ def get_host_ipv4_in_network_with(ipv4: str, netmask: int) -> str:
     return re.search(f'inet\s({".".join(ipv4.split(".")[:2])}\.\d+\.\d+)/{netmask}', output).group(1)
 
 
-def add_dnat_rule(netns: str | None, src_ipv4: str, prev_dest_ipv4: str, new_dest_ipv4: str):
+def add_dnat_rule(netns: Netns, src_ipv4: str, prev_dest_ipv4: str, new_dest_ipv4: str):
     run_in_namespace(netns, 'iptables', '-t', 'nat', '-A', 'OUTPUT', '-d',
                      prev_dest_ipv4, '-s', src_ipv4, '-j', 'DNAT', '--to-destination', new_dest_ipv4)
 
@@ -115,12 +122,12 @@ def resolve_hostnames_to_ipv4(hostname: str) -> list[str]:
     return list(set(addrs))
 
 
-def assign_bridge_master(netns: str | None, veth: NetIface, bridge: NetIface):
+def assign_bridge_master(netns: Netns, veth: NetIface, bridge: NetIface):
     run_in_namespace(netns, 'ip', 'link', 'set',
                      veth.name, 'master', bridge.name)
 
 
-def create_bridge(netns: str | None, bridge: NetIface):
+def create_bridge(netns: Netns, bridge: NetIface):
     run_in_namespace(netns, 'ip', 'link', 'add', bridge.name, 'type', 'bridge')
     assign_ipv4(netns, bridge)
     set_iface_state(netns, bridge.name, True)
@@ -137,7 +144,7 @@ def connect_container_to_bridge(bridge: NetIface, host_veth: NetIface, container
     assign_bridge_master(HOST_NS, host_veth, bridge)
 
 
-def set_forwarding_through(netns: str | None, iface: NetIface, enabled: bool):
+def set_forwarding_through(netns: Netns, iface: NetIface, enabled: bool):
     mode = _iptables_mode(enabled)
     run_in_namespace(netns, 'iptables', mode, 'FORWARD',
                      '-o', iface.name, '-j', 'ACCEPT')
@@ -145,20 +152,28 @@ def set_forwarding_through(netns: str | None, iface: NetIface, enabled: bool):
                      '-i', iface.name, '-j', 'ACCEPT')
 
 
-def set_bridged_traffic_masquerading(netns: str | None, bridge: NetIface, enabled: bool):
+def set_bridged_traffic_masquerading(netns: Netns, bridge: NetIface, enabled: bool):
     mode = _iptables_mode(enabled)
     run_in_namespace(netns, 'iptables', '-t', 'nat', mode, 'POSTROUTING', '-s',
                      f'{bridge.ipv4}/{bridge.netmask}', '!', '-o', bridge.name, '-j', 'MASQUERADE')
 
 
-def masquerade_internet_facing_traffic(netns: str | None, src_iface: NetIface, forwarding_iface: NetIface):
+def masquerade_internet_facing_traffic(netns: Netns, src_iface: NetIface, forwarding_iface: NetIface):
     run_in_namespace(netns, 'iptables', '-t', 'nat', '-A', 'POSTROUTING', '-s',
                      f'{src_iface.ipv4}/{src_iface.netmask}', '-o', forwarding_iface.name, '-j', 'MASQUERADE')
 
 
-def delete_iface(netns: str | None, iface: NetIface):
+def create_gre_tunnel(netns: Netns, tunnel_iface: NetIface, src_ipv4: str, dst_ipv4: str, set_up: bool = True):
+    run_in_namespace(netns, 'ip', 'tunnel', 'add',
+                     tunnel_iface.name, 'mode', 'gre', 'remote', dst_ipv4, 'local', src_ipv4, 'ttl', '255')
+    assign_ipv4(netns, tunnel_iface)
+    if set_up:
+        set_iface_state(netns, tunnel_iface.name, True)
+
+
+def delete_iface(netns: Netns, iface: NetIface):
     run_in_namespace(netns, 'ip', 'link', 'del', iface.name)
 
 
-def delete_namespace(parent_ns: str | None, ns_to_delete: str):
+def delete_namespace(parent_ns: Netns, ns_to_delete: str):
     run_in_namespace(parent_ns, 'ip', 'netns', 'delete', ns_to_delete)

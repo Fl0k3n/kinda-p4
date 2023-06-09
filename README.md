@@ -1,7 +1,7 @@
 # Kinda-p4
 
 
-Tool for integrating Kubernetes clusters built with Kind with virtualized local networks provided by container-based tools such as Kathara or Containernet. Cluster nodes can be bootstrapped with a BMV2 P4 switch acting as a virtual P4 NIC.
+Tool for integrating Kubernetes clusters built with Kind with virtualized local networks created with container-based network virtualization tools such as Kathara or Containernet. Cluster nodes can be bootstrapped with a BMV2 P4 switch acting as a virtual P4 NIC.
 
 ## Requirements
 - Linux with ip toolkit
@@ -19,7 +19,7 @@ Create a Python script with your topology and cluster, see examples for referenc
 
 ## Usage
 
-Kubectl is automatically configured to interact with the cluster; see [examples/k8s](examples/k8s) for reference. Kubectl traffic is directly passed from the host to the control plane, but any cluster-internal traffic is routed only via the provided virtual network.
+Kubectl is automatically configured to interact with the cluster; see [examples/k8s](examples/k8s) for reference. Kubectl traffic is directly passed from the host to the control plane, but any cluster-internal traffic is routed only via the provided virtual network (enscapsulted with GRE).
 
 
 Internet access can be enabled through any container in a virtualized network; DockerHub access is routed directly through the host and thus doesn't require enabling internet access in the virtualized network itself.

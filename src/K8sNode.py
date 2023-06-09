@@ -1,6 +1,7 @@
 from abc import ABC
 
 from util.iputils import NetIface
+from util.kubectlutils import Cidr, NodeInfo
 from util.p4 import P4Params
 
 
@@ -20,6 +21,10 @@ class K8sNode(ABC):
 
         # internal interface created by kind
         self.internal_cluster_iface: NetIface = None
+
+        self.internal_node_meta: NodeInfo = None
+        self.internal_node_name: str = None
+        self.pod_cidrs: list[Cidr] = None
 
 
 class ControlNode(K8sNode):

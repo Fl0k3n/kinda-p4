@@ -60,7 +60,7 @@ class InternetAccessManager:
                 self.internet_gateway_container_netns, cluster_node.net_iface, self.container_veth)
 
     def _get_host_bridge_meta(self) -> NetIface:
-        # TODO make it more deterministic and assert that it doesn't overlap with any virtualized network
+        # TODO make it more deterministic
         name = f'br_{iputils.random_iface_suffix()}'
         base_subnet = 64
         for subnet in range(base_subnet, 255):

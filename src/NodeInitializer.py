@@ -4,8 +4,10 @@ from time import sleep
 
 import util.containerutils as containerutils
 import util.iputils as iputils
+import util.kubectlutils as kubectlutils
 from K8sNode import ControlNode, K8sNode, WorkerNode
 from util.iputils import NetIface
+from util.kubectlutils import NodesInfo
 from util.p4 import P4Params
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -25,6 +27,7 @@ class NodeInitializer:
 
     def __init__(self) -> None:
         self.ips_to_route_via_host = self._resolve_hostnames()
+        self.nodes_info: NodesInfo = None
 
     def assing_container_ids(self, cluster_name: str, workers: list[WorkerNode], controls: list[ControlNode]):
         docker_ps_output = containerutils.docker_ps()
@@ -39,6 +42,9 @@ class NodeInitializer:
 
         assert next(workers_iter, None) is None and next(controls_iter, None) is None, \
             'Failed to assign container ids to some nodes'
+
+    def setup_node_info(self):
+        self.nodes_info = kubectlutils.get_nodes_info()
 
     def init_worker(self, node: WorkerNode):
         print(f'Initializing worker: {node.name}')
@@ -71,8 +77,7 @@ class NodeInitializer:
 
     def _init_node(self, node: K8sNode):
         self._init_container_requirements(node)
-        node.internal_cluster_iface = iputils.get_interface_info(
-            node.netns_name, self._KIND_IFACE_NAME)
+        self._init_kubernetes_internals(node)
 
         if node.has_p4_nic:
             self._install_bmv2(node)
@@ -92,6 +97,16 @@ class NodeInitializer:
         node.pid = containerutils.get_container_pid(node.container_id)
         node.netns_name = f'ns_{node.name}'
         containerutils.attach_netns_to_host(node.pid, node.netns_name)
+
+    def _init_kubernetes_internals(self, node: K8sNode):
+        node.internal_cluster_iface = iputils.get_interface_info(
+            node.netns_name, self._KIND_IFACE_NAME)
+        node.internal_node_meta = kubectlutils.get_info_of_node_with_internal_ip(
+            self.nodes_info, node.internal_cluster_iface.ipv4)
+        node.internal_node_name = kubectlutils.get_node_name(
+            node.internal_node_meta)
+        node.pod_cidrs = kubectlutils.get_node_pod_cidrs(
+            node.internal_node_meta)
 
     def _install_bmv2(self, node: K8sNode):
         containerutils.copy_and_run_script_in_container(
