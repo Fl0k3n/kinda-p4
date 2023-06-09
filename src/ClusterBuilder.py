@@ -1,16 +1,16 @@
 import itertools as it
-import os
-import subprocess as sp
 import tempfile
-from concurrent.futures import ThreadPoolExecutor, wait
-from typing import IO, NamedTuple
+from concurrent.futures import Future, ThreadPoolExecutor, wait
+from typing import Any, NamedTuple
 
 import util.containerutils as containerutils
 import util.iputils as iputils
+import util.kindutils as kindutils
 from InternetAccessManager import InternetAccessManager
 from K8sNode import ControlNode, K8sNode, WorkerNode
 from NodeInitializer import NodeInitializer
 from util.iputils import NetIface
+from util.p4 import P4Params
 
 
 class ConnectionTask(NamedTuple):
@@ -27,7 +27,6 @@ class BridgeInfo(NamedTuple):
 
 
 class ClusterBuilder:
-    KUBECONFIG_PATH = os.path.join(os.environ['HOME'], '.kube', 'config')
     KIND_TIMEOUT_SECONDS = 120
     NODE_INIT_TIMEOUT_SECONDS = 300
     MAX_POOL_SIZE = 32
@@ -44,11 +43,17 @@ class ClusterBuilder:
         self.container_netns = set()
         self.connect_tasks: list[ConnectionTask] = []
 
-    def add_control(self, name: str, with_p4_nic: bool = False):
-        self.control_nodes[name] = ControlNode(name, with_p4_nic)
+    def add_control(self, name: str, with_p4_nic: bool = False, p4_params: P4Params = None):
+        if with_p4_nic and p4_params is None:
+            p4_params = P4Params()
 
-    def add_worker(self, name: str, with_p4_nic: bool = True):
-        self.worker_nodes[name] = WorkerNode(name, with_p4_nic)
+        self.control_nodes[name] = ControlNode(name, with_p4_nic, p4_params)
+
+    def add_worker(self, name: str, with_p4_nic: bool = False, p4_params: P4Params = None):
+        if with_p4_nic and p4_params is None:
+            p4_params = P4Params()
+
+        self.worker_nodes[name] = WorkerNode(name, with_p4_nic, p4_params)
 
     def build(self):
         if self.built:
@@ -64,6 +69,7 @@ class ClusterBuilder:
         print("Setting up cluster networking...")
         self._setup_connections()
         self._update_cluster_address_translatations()
+        self._setup_p4_nics()
 
         if self.internet_access_requested:
             print("Provisioning itnernet access...")
@@ -80,13 +86,13 @@ class ClusterBuilder:
         if self.internet_access_requested:
             self.internet_access_mgr.teardown_internet_access()
 
-        sp.run(['sudo', 'kind', 'delete', 'clusters', self.name])
+        kindutils.delete_cluster(self.name)
         self._clear_attached_namespaces()
 
     def connect_with_container(self, node_name: str, node_iface: NetIface, container_id: str, container_iface: NetIface,
                                add_default_route_via_container: bool = True):
-        assert node_name not in set([x.node_name for x in self.connect_tasks]
-                                    ), f'Node {node_name} is already connected to a container'
+        assert node_name not in [x.node_name for x in self.connect_tasks], \
+            f'Node {node_name} can have at most one connection with virtualized network'
 
         self.connect_tasks.append(ConnectionTask(
             node_name, node_iface, container_id, container_iface, add_default_route_via_container))
@@ -108,8 +114,15 @@ class ClusterBuilder:
             bridge_slave_iface = self._create_bridge_and_get_slave_meta(
                 container_ns, container_iface, bridge_to_slaves)
 
-            iputils.connect_namespaces(
-                node.netns_name, container_ns, node_iface, bridge_slave_iface)
+            if node.has_p4_nic:
+                iputils.connect_namespaces(
+                    node.netns_name, container_ns, node.p4_net_iface, bridge_slave_iface, set_up=True)
+                iputils.create_veth_pair(
+                    node.netns_name, node.p4_internal_iface, node_iface, set_up=True)
+            else:
+                iputils.connect_namespaces(
+                    node.netns_name, container_ns, node_iface, bridge_slave_iface, set_up=True)
+
             iputils.assign_bridge_master(
                 container_ns, bridge_slave_iface, container_iface)
             iputils.assign_ipv4(node.netns_name, node_iface)
@@ -122,11 +135,10 @@ class ClusterBuilder:
 
     def _run_cluster(self):
         with tempfile.NamedTemporaryFile() as kind_cfg_file:
-            self._prepare_kind_cfg_file(kind_cfg_file)
-            kind_sp = sp.Popen(['sudo', 'kind', 'create', 'cluster', '--name', self.name, '--config', kind_cfg_file.name],
-                               stdout=sp.PIPE,
-                               text=True)
-            kind_sp.wait(self.KIND_TIMEOUT_SECONDS)
+            kindutils.prepare_kind_cfg_file(kind_cfg_file, len(
+                self.control_nodes), len(self.worker_nodes))
+            kindutils.run_cluster(
+                self.name, kind_cfg_file.name, self.KIND_TIMEOUT_SECONDS)
 
     def _update_cluster_address_translatations(self):
         for node1, node2 in it.combinations(self.workers + self.controls, 2):
@@ -138,25 +150,11 @@ class ClusterBuilder:
                 node1.internal_cluster_iface.ipv4, node1.net_iface.ipv4
             )
 
-    def _prepare_kind_cfg_file(self, file: IO[bytes]):
-        lines = ([
-            'kind: Cluster',
-            'apiVersion: kind.x-k8s.io/v1alpha4',
-            'nodes:',
-            *['- role: control-plane' for _ in self.control_nodes],
-            *['- role: worker' for _ in self.worker_nodes],
-            ''
-        ])
-
-        file.write('\n'.join(lines).encode())
-        file.flush()
-
     def _init_nodes(self):
         self.node_initializer.assing_container_ids(
             self.name, self.workers, self.controls)
 
-        pool_size = min(self.MAX_POOL_SIZE, len(
-            self.worker_nodes) + len(self.control_nodes))
+        pool_size = min(self.MAX_POOL_SIZE, len(self.controls + self.workers))
 
         with ThreadPoolExecutor(max_workers=pool_size) as executor:
             control_tasks = [executor.submit(
@@ -165,19 +163,11 @@ class ClusterBuilder:
             worker_tasks = [executor.submit(
                 self.node_initializer.init_worker, worker) for worker in self.workers]
 
-            tasks = worker_tasks + control_tasks
-            tasks_result = wait(tasks, timeout=self.NODE_INIT_TIMEOUT_SECONDS)
-
-            if tasks_result.not_done:
-                print("some tasks didn't finish")
-            elif any([task.exception() for task in tasks]):
-                print("some tasks finished with an exception")
+            self._await_tasks(worker_tasks + control_tasks,
+                              self.NODE_INIT_TIMEOUT_SECONDS)
 
     def _update_kubectl_cfg(self):
-        kubeconfig = sp.run(['sudo', 'kind', 'get', 'kubeconfig',
-                            '--name', self.name], capture_output=True, text=True).stdout
-        with open(self.KUBECONFIG_PATH, 'w') as f:
-            f.write(kubeconfig)
+        kindutils.update_kubectl_cfg(self.name, kindutils.KUBECONFIG_PATH)
 
     def _get_node(self, name: str) -> K8sNode:
         return self.worker_nodes.get(name, None) or self.control_nodes[name]
@@ -190,7 +180,7 @@ class ClusterBuilder:
                 nss_to_remove.append(node.netns_name)
 
         for ns in nss_to_remove:
-            sp.run(['sudo', 'ip', 'netns', 'delete', ns])
+            iputils.delete_namespace(iputils.HOST_NS, ns)
 
     def _attach_container_namespace_to_host(self, container_id: str) -> str:
         pid = containerutils.get_container_pid(container_id)
@@ -214,6 +204,30 @@ class ClusterBuilder:
         bridge_to_slaves[bridge_info].append(bridge_slave_iface)
 
         return bridge_slave_iface
+
+    def _setup_p4_nics(self):
+        p4_nodes = [node for node in self.controls +
+                    self.workers if node.has_p4_nic and node.p4_params.run_nic]
+        if p4_nodes:
+            with ThreadPoolExecutor(max_workers=min(self.MAX_POOL_SIZE, len(p4_nodes))) as executor:
+                tasks = [executor.submit(
+                    self.node_initializer.run_p4_nic, node) for node in p4_nodes]
+
+                try:
+                    self._await_tasks(tasks, self.NODE_INIT_TIMEOUT_SECONDS)
+                except Exception as e:
+                    print('Failed to setup p4 NICs')
+                    print(e)
+
+    def _await_tasks(self, tasks: list[Future[Any]], timeout: float = None):
+        tasks_result = wait(tasks, timeout=timeout)
+
+        if tasks_result.not_done:
+            raise Exception("some tasks didn't finish")
+
+        if failed_tasks := [task for task in tasks if task.exception() is not None]:
+            print("some tasks finished with an exception")
+            raise failed_tasks[0].exception()
 
     @property
     def workers(self) -> list[WorkerNode]:

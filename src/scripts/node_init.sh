@@ -2,6 +2,8 @@
 
 apt update
 
-apt install -y \
+apt install -y --no-install-recommends \
     iputils-ping \
-    inetutils-traceroute
+    inetutils-traceroute \
+    net-tools \
+    vim

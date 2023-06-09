@@ -1,10 +1,12 @@
 import itertools as it
 import os
-import subprocess as sp
+from time import sleep
 
 import util.containerutils as containerutils
 import util.iputils as iputils
 from K8sNode import ControlNode, K8sNode, WorkerNode
+from util.iputils import NetIface
+from util.p4 import P4Params
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _SCRIPTS_DIR = os.path.join(_THIS_DIR, 'scripts')
@@ -16,6 +18,8 @@ class NodeInitializer:
     _BMV2_FILENAME = 'bmv2_install.sh'
     _NODE_INIT_PATH = os.path.join(_SCRIPTS_DIR, _NODE_INIT_SCRIPT_FILENAME)
     _BMV2_PATH = os.path.join(_SCRIPTS_DIR, _BMV2_FILENAME)
+    _BMV2_EXECUTABLE = 'simple_switch'
+    _WAIT_FOR_BMV2_INIT_SECONDS = 1
     _HOSTNAMES_TO_ROUTE_VIA_HOST = [
         'registry-1.docker.io', 'production.cloudflare.docker.com']
 
@@ -23,12 +27,11 @@ class NodeInitializer:
         self.ips_to_route_via_host = self._resolve_hostnames()
 
     def assing_container_ids(self, cluster_name: str, workers: list[WorkerNode], controls: list[ControlNode]):
-        docker_output = sp.run(['sudo', 'docker', 'ps'],
-                               capture_output=True, text=True)
+        docker_ps_output = containerutils.docker_ps()
         workers_iter = iter(workers)
         controls_iter = iter(controls)
 
-        for line in docker_output.stdout.splitlines():
+        for line in docker_ps_output.splitlines():
             if cluster_name in line:
                 node = next(workers_iter) if 'worker' in line else next(
                     controls_iter)
@@ -47,6 +50,25 @@ class NodeInitializer:
         self._init_node(node)
         print(f'control plane node: {node.name} ready')
 
+    def run_p4_nic(self, node: K8sNode):
+        self._assert_p4_can_be_run_on(node)
+        print(f'Starting P4 NIC on {node.name}')
+        params = node.p4_params
+
+        args = [self._BMV2_EXECUTABLE, '-i',
+                f'0@{node.p4_net_iface.name}', '-i', f'1@{node.p4_internal_iface.name}']
+        if params.host_script_path is not None:
+            args.append(self._get_p4_script_container_path(params))
+        else:
+            args.append('--no-p4')
+
+        containerutils.docker_exec_detached(node.container_id, *args)
+        sleep(self._WAIT_FOR_BMV2_INIT_SECONDS)
+        if containerutils.is_process_running(node.container_id, self._BMV2_EXECUTABLE):
+            print(f'P4 NIC is running on {node.name}')
+        else:
+            print(f'Failed to run P4 NIC on {node.name}')
+
     def _init_node(self, node: K8sNode):
         self._init_container_requirements(node)
         node.internal_cluster_iface = iputils.get_interface_info(
@@ -54,6 +76,8 @@ class NodeInitializer:
 
         if node.has_p4_nic:
             self._install_bmv2(node)
+            self._setup_p4_iface_meta(node)
+            self._handle_p4_params(node)
 
         host_ip = iputils.get_host_ipv4_in_network_with(
             node.internal_cluster_iface.ipv4, node.internal_cluster_iface.netmask)
@@ -73,6 +97,28 @@ class NodeInitializer:
         containerutils.copy_and_run_script_in_container(
             node.container_id, self._BMV2_PATH, f'/home/{self._BMV2_FILENAME}')
         print(f'Installed bmv2 on: {node.name}')
+
+    def _handle_p4_params(self, node: K8sNode):
+        params = node.p4_params
+
+        if params.host_script_path is not None:
+            containerutils.copy_to_container(node.container_id, str(
+                params.host_script_path.absolute()), self._get_p4_script_container_path(params))
+
+    def _get_p4_script_container_path(self, p4_params: P4Params) -> str:
+        return f'/home/{p4_params.host_script_path.name}'
+
+    def _setup_p4_iface_meta(self, node: K8sNode):
+        node.p4_net_iface = NetIface(
+            f'p4_neth{iputils.random_iface_suffix()}', None, None)
+        node.p4_internal_iface = NetIface(
+            f'p4_inteth{iputils.random_iface_suffix()}', None, None)
+
+    def _assert_p4_can_be_run_on(self, node: K8sNode):
+        assert (node.has_p4_nic and
+                node.p4_internal_iface is not None and
+                node.p4_net_iface is not None and
+                node.p4_params.run_nic), f"P4 NIC can't be run on {node.name}"
 
     def _resolve_hostnames(self) -> list[str]:
         return list(it.chain(*map(iputils.resolve_hostnames_to_ipv4, self._HOSTNAMES_TO_ROUTE_VIA_HOST)))

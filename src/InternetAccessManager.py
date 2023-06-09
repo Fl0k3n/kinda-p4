@@ -1,5 +1,3 @@
-import random
-
 import util.iputils as iputils
 from K8sNode import K8sNode
 from util.iputils import NetIface
@@ -26,15 +24,16 @@ class InternetAccessManager:
     def teardown_internet_access(self):
         try:
             iputils.set_bridged_traffic_masquerading(
-                None, self.host_bridge, False)
-            iputils.delete_iface(None, self.host_veth)
-            iputils.delete_iface(None, self.host_bridge)
-        except:
-            pass  # ignore
+                iputils.HOST_NS, self.host_bridge, False)
+            iputils.delete_iface(iputils.HOST_NS, self.host_veth)
+            iputils.delete_iface(iputils.HOST_NS, self.host_bridge)
+        except Exception as e:
+            print("Exception while removing internet access")
+            print(e)
 
     def _create_host_bridge(self):
         self.host_bridge = self._get_host_bridge_meta()
-        iputils.create_bridge(None, self.host_bridge)
+        iputils.create_bridge(iputils.HOST_NS, self.host_bridge)
 
     def _connect_gateway_to_bridge(self):
         self.host_veth = NetIface(
@@ -53,15 +52,16 @@ class InternetAccessManager:
             self.internet_gateway_container_netns, self.host_bridge.ipv4)
 
     def _setup_address_translations(self):
-        iputils.set_forwarding_through(None, self.host_bridge, True)
-        iputils.set_bridged_traffic_masquerading(None, self.host_bridge, True)
+        iputils.set_forwarding_through(iputils.HOST_NS, self.host_bridge, True)
+        iputils.set_bridged_traffic_masquerading(
+            iputils.HOST_NS, self.host_bridge, True)
         for cluster_node in self.cluster_nodes:
             iputils.masquerade_internet_facing_traffic(
                 self.internet_gateway_container_netns, cluster_node.net_iface, self.container_veth)
 
     def _get_host_bridge_meta(self) -> NetIface:
         # TODO make it more deterministic and assert that it doesn't overlap with any virtualized network
-        name = f'br_{random.randint(10000, 100000)}'
+        name = f'br_{iputils.random_iface_suffix()}'
         base_subnet = 64
         for subnet in range(base_subnet, 255):
             try:

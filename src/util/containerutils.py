@@ -15,12 +15,29 @@ def attach_netns_to_host(container_pid: str, netns_name: str):
     sp.run(['sudo', 'ip', 'netns', 'attach', netns_name, container_pid])
 
 
-def docker_exec_it(container_id: str, *commands: list[str]) -> str:
+def docker_exec_it(container_id: str, *commands: list[str]) -> sp.CompletedProcess[str]:
     return sp.run(['sudo', 'docker', 'exec', '-it', container_id, *commands], text=True,
-                  capture_output=True).stdout
+                  capture_output=True)
+
+
+def docker_exec_detached(container_id: str, *commands: list[str]):
+    return sp.run(['sudo', 'docker', 'exec', '-d', container_id, *commands], text=True, capture_output=True)
+
+
+def is_process_running(container_id: str, proc_name: str) -> bool:
+    # TODO smth more reliable
+    return docker_exec_it(container_id, 'pidof', proc_name).returncode == 0
+
+
+def docker_ps() -> str:
+    return sp.run(['sudo', 'docker', 'ps'], capture_output=True, text=True).stdout
+
+
+def copy_to_container(container_id: str, host_path: str, container_path: str):
+    sp.run(['sudo', 'docker', 'cp', host_path,
+           f'{container_id}:{container_path}'])
 
 
 def copy_and_run_script_in_container(container_id: str, script_host_path: str, script_container_path: str):
-    sp.run(['sudo', 'docker', 'cp', script_host_path,
-           f'{container_id}:{script_container_path}'])
+    copy_to_container(container_id, script_host_path, script_container_path)
     docker_exec_it(container_id, script_container_path)

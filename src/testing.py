@@ -2,6 +2,7 @@ from Kathara.model.Lab import Lab
 
 from KatharaBackedNet import KatharaBackedCluster, container_id
 from util.iputils import NetIface
+from util.p4 import P4Params
 
 network = Lab("test1")
 
@@ -31,7 +32,8 @@ r2.update_meta(args={
 with KatharaBackedCluster('test-cluster', network) as cluster:
     cluster.enable_internet_access_via(container_id(r1))
 
-    cluster.add_worker('w1', with_p4_nic=False)
+    cluster.add_worker('w1', with_p4_nic=True, p4_params=P4Params(
+        initial_compiled_script_host_path='./src/scripts/basic.json', run_nic=True))
     cluster.add_worker('w2', with_p4_nic=False)
     cluster.add_control('c1', with_p4_nic=False)
 
