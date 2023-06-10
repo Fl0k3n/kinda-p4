@@ -9,16 +9,20 @@ Netns = str | None
 HOST_NS: Netns = None
 
 
+class Cidr(NamedTuple):
+    ipv4: str
+    netmask: int
+
+
 @dataclass
 class NetIface:
     name: str
     ipv4: str
     netmask: int
 
-
-class Cidr(NamedTuple):
-    ipv4: str
-    netmask: int
+    @property
+    def cidr(self) -> Cidr:
+        return Cidr(self.ipv4, self.netmask)
 
 # TODO error handling
 
@@ -158,9 +162,9 @@ def set_bridged_traffic_masquerading(netns: Netns, bridge: NetIface, enabled: bo
                      f'{bridge.ipv4}/{bridge.netmask}', '!', '-o', bridge.name, '-j', 'MASQUERADE')
 
 
-def masquerade_internet_facing_traffic(netns: Netns, src_iface: NetIface, forwarding_iface: NetIface):
+def masquerade_internet_facing_traffic(netns: Netns, src: Cidr, forwarding_iface: NetIface):
     run_in_namespace(netns, 'iptables', '-t', 'nat', '-A', 'POSTROUTING', '-s',
-                     f'{src_iface.ipv4}/{src_iface.netmask}', '-o', forwarding_iface.name, '-j', 'MASQUERADE')
+                     f'{src.ipv4}/{src.netmask}', '-o', forwarding_iface.name, '-j', 'MASQUERADE')
 
 
 def create_gre_tunnel(netns: Netns, tunnel_iface: NetIface, src_ipv4: str, dst_ipv4: str, set_up: bool = True):

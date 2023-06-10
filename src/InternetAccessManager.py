@@ -1,9 +1,11 @@
 import util.iputils as iputils
 from K8sNode import K8sNode
-from util.iputils import NetIface
+from util.iputils import Cidr, NetIface
 
 
 class InternetAccessManager:
+    _POD_SUBNET = Cidr('10.244.0.0', 16)
+    _TUNELLED_SUBNET = Cidr('192.168.0.0', 24)
 
     def __init__(self) -> None:
         self.internet_gateway_container_netns: str = None
@@ -55,9 +57,15 @@ class InternetAccessManager:
         iputils.set_forwarding_through(iputils.HOST_NS, self.host_bridge, True)
         iputils.set_bridged_traffic_masquerading(
             iputils.HOST_NS, self.host_bridge, True)
+
+        # TODO not sure if both of these are neccesary but it shouldn't hurt
+        for subnet in (self._POD_SUBNET, self._TUNELLED_SUBNET):
+            iputils.masquerade_internet_facing_traffic(
+                self.internet_gateway_container_netns, subnet, self.container_veth)
+
         for cluster_node in self.cluster_nodes:
             iputils.masquerade_internet_facing_traffic(
-                self.internet_gateway_container_netns, cluster_node.net_iface, self.container_veth)
+                self.internet_gateway_container_netns, cluster_node.net_iface.cidr, self.container_veth)
 
     def _get_host_bridge_meta(self) -> NetIface:
         # TODO make it more deterministic

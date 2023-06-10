@@ -150,6 +150,11 @@ class ClusterBuilder:
                 container_ns, bridge_slave_iface, container_iface)
             iputils.assign_ipv4(node.netns_name, node_iface)
 
+            # checksum offloading leads to invalid TCP checksums which prevent iptables from
+            # NATing such packets, making TCP broken in the cluster
+            containerutils.turn_off_tcp_checksum_offloading(
+                node.container_id, node.net_iface.name)
+
             if add_default_route_via_container:
                 iputils.add_default_route(
                     node.netns_name, container_iface.ipv4)

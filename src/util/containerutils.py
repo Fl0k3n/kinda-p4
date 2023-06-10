@@ -38,6 +38,11 @@ def copy_to_container(container_id: str, host_path: str, container_path: str):
            f'{container_id}:{container_path}'])
 
 
+def turn_off_tcp_checksum_offloading(container_id: str, iface_name: str):
+    docker_exec_detached(container_id, 'ethtool', '-K',
+                         iface_name, 'rx', 'off', 'tx', 'off')
+
+
 def copy_and_run_script_in_container(container_id: str, script_host_path: str, script_container_path: str):
     copy_to_container(container_id, script_host_path, script_container_path)
     docker_exec_it(container_id, script_container_path)

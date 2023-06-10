@@ -11,15 +11,17 @@ Tool for integrating Kubernetes clusters built with Kind with virtualized local 
 
 ## Installation
 
+Clone this repo and in the main directory run:
+
 `pip install -r requirements.txt`
 
 ## Running
 
-Create a Python script with your topology and cluster, see examples for reference, then run it as a root (required to use Kind, iptables, etc...).
+Create a Python script with your topology and cluster, see/copy from [examples/nets](examples/nets) for more info, then run it as a root (required to use Kind, iptables, etc...).
 
 ## Usage
 
-Kubectl is automatically configured to interact with the cluster; see [examples/k8s](examples/k8s) for reference. Kubectl traffic is directly passed from the host to the control plane, but any cluster-internal traffic is routed only via the provided virtual network (enscapsulted with GRE).
+Kubectl is automatically configured to interact with the cluster. Kubectl traffic is directly passed from the host to the control plane, but any cluster-internal traffic is routed only via the provided virtual network (enscapsulted with GRE).
 
 
 Internet access can be enabled through any container in a virtualized network; DockerHub access is routed directly through the host and thus doesn't require enabling internet access in the virtualized network itself.

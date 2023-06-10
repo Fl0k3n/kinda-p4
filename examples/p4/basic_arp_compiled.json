@@ -228,7 +228,7 @@
       "id": 0,
       "source_info": {
         "filename": "basic_arp.p4",
-        "line": 234,
+        "line": 235,
         "column": 8,
         "source_fragment": "MyDeparser"
       },
@@ -239,65 +239,7 @@
   "meter_arrays": [],
   "counter_arrays": [],
   "register_arrays": [],
-  "calculations": [
-    {
-      "name": "calc",
-      "id": 0,
-      "source_info": {
-        "filename": "basic_arp.p4",
-        "line": 212,
-        "column": 8,
-        "source_fragment": "update_checksum( ..."
-      },
-      "algo": "csum16",
-      "input": [
-        {
-          "type": "field",
-          "value": ["ipv4", "version"]
-        },
-        {
-          "type": "field",
-          "value": ["ipv4", "ihl"]
-        },
-        {
-          "type": "field",
-          "value": ["ipv4", "diffserv"]
-        },
-        {
-          "type": "field",
-          "value": ["ipv4", "totalLen"]
-        },
-        {
-          "type": "field",
-          "value": ["ipv4", "identification"]
-        },
-        {
-          "type": "field",
-          "value": ["ipv4", "flags"]
-        },
-        {
-          "type": "field",
-          "value": ["ipv4", "fragOffset"]
-        },
-        {
-          "type": "field",
-          "value": ["ipv4", "ttl"]
-        },
-        {
-          "type": "field",
-          "value": ["ipv4", "protocol"]
-        },
-        {
-          "type": "field",
-          "value": ["ipv4", "srcAddr"]
-        },
-        {
-          "type": "field",
-          "value": ["ipv4", "dstAddr"]
-        }
-      ]
-    }
-  ],
+  "calculations": [],
   "learn_lists": [],
   "actions": [
     {
@@ -494,25 +436,6 @@
               }
             }
           ]
-        },
-        {
-          "op": "assign",
-          "parameters": [
-            {
-              "type": "field",
-              "value": ["ipv4", "ttl"]
-            },
-            {
-              "type": "hexstr",
-              "value": "0x0d"
-            }
-          ],
-          "source_info": {
-            "filename": "basic_arp.p4",
-            "line": 131,
-            "column": 6,
-            "source_fragment": "hdr.ipv4.ttl = 13"
-          }
         }
       ]
     },
@@ -585,25 +508,6 @@
             "line": 137,
             "column": 8,
             "source_fragment": "hdr.ethernet.dstAddr = dstAddr"
-          }
-        },
-        {
-          "op": "assign",
-          "parameters": [
-            {
-              "type": "field",
-              "value": ["ipv4", "ttl"]
-            },
-            {
-              "type": "hexstr",
-              "value": "0x0b"
-            }
-          ],
-          "source_info": {
-            "filename": "basic_arp.p4",
-            "line": 139,
-            "column": 8,
-            "source_fragment": "hdr.ipv4.ttl = 11"
           }
         }
       ]
@@ -1039,34 +943,7 @@
       "conditionals": []
     }
   ],
-  "checksums": [
-    {
-      "name": "cksum",
-      "id": 0,
-      "source_info": {
-        "filename": "basic_arp.p4",
-        "line": 212,
-        "column": 8,
-        "source_fragment": "update_checksum( ..."
-      },
-      "target": ["ipv4", "hdrChecksum"],
-      "type": "generic",
-      "calculation": "calc",
-      "verify": false,
-      "update": true,
-      "if_cond": {
-        "type": "expression",
-        "value": {
-          "op": "d2b",
-          "left": null,
-          "right": {
-            "type": "field",
-            "value": ["ipv4", "$valid$"]
-          }
-        }
-      }
-    }
-  ],
+  "checksums": [],
   "force_arith": [],
   "extern_instances": [],
   "field_aliases": [
