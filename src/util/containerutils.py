@@ -12,7 +12,8 @@ def create_namespace_name(container_pid: str) -> str:
 
 
 def attach_netns_to_host(container_pid: str, netns_name: str):
-    sp.run(['sudo', 'ip', 'netns', 'attach', netns_name, container_pid])
+    res = sp.run(['sudo', 'ip', 'netns', 'attach', netns_name, container_pid])
+    assert res.returncode == 0, f'Failed to attach namespace: {netns_name} to host'
 
 
 def docker_exec_it(container_id: str, *commands: list[str]) -> sp.CompletedProcess[str]:

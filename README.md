@@ -1,11 +1,16 @@
 # Kinda-p4
 
+Library for emulation of Kubernetes clusters in complex container-based virtual networks. Network topologies can be created with other tools such as Kathara (built-in) or Containernet. Clusters are automatically created using Kind and can be connected to such a virtual network.
 
-Tool for integrating Kubernetes clusters built with Kind with virtualized local networks created with container-based network virtualization tools such as Kathara or Containernet. Cluster nodes can be bootstrapped with a BMV2 P4 switch acting as a virtual P4 NIC.
+Network topology can be built with a classical networking approach by utilizing, for example, the Quagga project (`kathara/quagga` Docker image) or with a SDN approach using, for example, OpenVSwitch (`kathara/sdn` Docker image) or BMv2 (`kathara/p4` Docker image).
+
+Cluster nodes can be bootstrapped with a BMv2 P4 switch acting as a virtual P4-programmable smart NIC.
+
+Note: All of the pod traffic sent between different Kubernetes nodes is automatically encapsulated with GRE, which may have some consequences for underlying network solutions (for example, if you wanted to use P4 switches and access TCP data, now you would also need to account for the deparsing of the GRE header).
 
 ## Requirements
-- Linux with ip toolkit
-- Kind and its requirements such as Docker and iptables
+- Linux with ip toolkit, iptables, kubectl and docker (tested on ubuntu with 5.19 kernel)
+- Kind 0.18
 - Python>=3.10
 
 
@@ -17,7 +22,7 @@ Clone this repo and in the main directory run:
 
 ## Running
 
-Create a Python script with your topology and cluster, see/copy from [examples/nets](examples/nets) for more info, then run it as a root (required to use Kind, iptables, etc...).
+Create a Python script with your topology and cluster, see [examples/nets](examples/nets) for more info, then run it as a root (required to use Kind, iptables, etc...).
 
 ## Usage
 

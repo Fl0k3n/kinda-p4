@@ -1,4 +1,4 @@
-Simple Kathara-based network with 2 Kubernetes workers and 1 control plane node.
+Simple Kathara-based network with static routing, 2 Kubernetes workers and 1 control plane node.
 
 <img src='topology.png'>
 
@@ -11,9 +11,7 @@ Copy the python script to `src` directory and run it as a root.
 # Testing
 
 You should be able to interract with the cluster using `kubectl`, try running:
-- `kubectl apply -f examples/k8s/depl.yaml` 
-- `kubectl apply -f examples/k8s/service.yaml`
-
+- `kubectl apply -f examples/k8s/nginx-single-sbc/deploy.yaml` 
 
 This will run nginx deployment and open the NodePort service that will allow you to access it via `<ip of any node in kind network>:30007` from the host, where the ip can be obtained with:
 - `sudo docker exec -it <any kind container id> ip a`

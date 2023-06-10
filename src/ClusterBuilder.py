@@ -27,7 +27,7 @@ class BridgeInfo(NamedTuple):
 
 
 class ClusterBuilder:
-    _KIND_TIMEOUT_SECONDS = 120
+    _KIND_TIMEOUT_SECONDS = 300
     _NODE_INIT_TIMEOUT_SECONDS = 300
     _MAX_NODES = 127
     _MAX_POOL_SIZE = 32
@@ -60,6 +60,10 @@ class ClusterBuilder:
         return list(self.control_nodes.values())
 
     def add_control(self, name: str, with_p4_nic: bool = False, p4_params: P4Params = None):
+        # Kind creates haproxy container when multiple control plane nodes are requested, which is problematic
+        assert len(
+            self.control_nodes) == 0, 'For now only 1 control plane node is supported'
+
         if with_p4_nic and p4_params is None:
             p4_params = P4Params()
 
@@ -114,6 +118,8 @@ class ClusterBuilder:
                                add_default_route_via_container: bool = True):
         assert node_name not in [x.node_name for x in self.connect_tasks], \
             f'Node {node_name} can have at most one connection with virtualized network'
+        assert node_name in self.control_nodes or node_name in self.worker_nodes, \
+            f"Node {node_name} wasn't added to cluster and can't be connected"
         self._assert_valid(node_iface)
         self._assert_valid(container_iface)
 
@@ -186,6 +192,9 @@ class ClusterBuilder:
                         src.netns_name, f'{subnet2}/25', tun.ipv4)
 
     def _run_cluster(self):
+        assert len(
+            self.control_nodes) > 0, 'At least 1 control plane node is required'
+
         with tempfile.NamedTemporaryFile() as kind_cfg_file:
             kindutils.prepare_kind_cfg_file(kind_cfg_file, len(
                 self.control_nodes), len(self.worker_nodes))

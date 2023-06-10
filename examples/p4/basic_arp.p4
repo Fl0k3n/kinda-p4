@@ -113,8 +113,8 @@ control MyIngress(inout headers hdr,
         mark_to_drop(standard_metadata);
     }
 
-    action flood() {
-        // assuming only 2 ports, as its the case for nic's
+    action switch_packet() {
+        // assuming only 2 ports, as its the case for nic
         if (standard_metadata.ingress_port == 0) {
             standard_metadata.egress_spec = 1;
         } else {
@@ -122,21 +122,16 @@ control MyIngress(inout headers hdr,
         }
     }
 
-    action simple_forward() {
-      if (standard_metadata.ingress_port == 0) {
-          standard_metadata.egress_spec = 1;
-      } else {
-          standard_metadata.egress_spec = 0;
-      }
-      hdr.ipv4.ttl = 13; // just to make sure it works
+    action switch_packet_ipv4() {
+      hdr.ipv4.ttl = 48; // just to make sure traffic goes through the nic
+      switch_packet();
     }
 
     action ipv4_forward(macAddr_t dstAddr, egressSpec_t port) {
         standard_metadata.egress_spec = port;
         hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
         hdr.ethernet.dstAddr = dstAddr;
-        // hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
-        hdr.ipv4.ttl = 11; // just to make sure it works
+        hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
     }
 
     action reply_arp(macAddr_t targetMac) {
@@ -159,11 +154,11 @@ control MyIngress(inout headers hdr,
       actions = {
           reply_arp;
           drop;
-          flood;
+          switch_packet;
           NoAction;
       }
       size = 1024;
-      default_action = flood();
+      default_action = switch_packet();
     }
 
     table ipv4_lpm {
@@ -172,12 +167,12 @@ control MyIngress(inout headers hdr,
         }
         actions = {
             ipv4_forward;
-            simple_forward;
+            switch_packet_ipv4;
             drop;
             NoAction;
         }
         size = 1024;
-        default_action = simple_forward();
+        default_action = switch_packet_ipv4();
     }
 
     apply {
@@ -185,7 +180,7 @@ control MyIngress(inout headers hdr,
           if (hdr.arp.opcode == ARP_REQUEST) {
             arp_exact.apply();
           } else if (hdr.arp.opcode == ARP_REPLY) {
-            flood();
+            switch_packet();
           }
         } else if (hdr.ipv4.isValid()) {
             ipv4_lpm.apply();

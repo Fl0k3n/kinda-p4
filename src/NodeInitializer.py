@@ -20,7 +20,7 @@ class NodeInitializer:
     _BMV2_FILENAME = 'bmv2_install.sh'
     _NODE_INIT_PATH = os.path.join(_SCRIPTS_DIR, _NODE_INIT_SCRIPT_FILENAME)
     _BMV2_PATH = os.path.join(_SCRIPTS_DIR, _BMV2_FILENAME)
-    _BMV2_EXECUTABLE = 'simple_switch'
+    _BMV2_EXECUTABLE = 'simple_switch'  # use 'simple_switch_grpc' instead?
     _WAIT_FOR_BMV2_INIT_SECONDS = 1
     _HOSTNAMES_TO_ROUTE_VIA_HOST = [
         'registry-1.docker.io', 'production.cloudflare.docker.com']
@@ -35,30 +35,34 @@ class NodeInitializer:
         controls_iter = iter(controls)
 
         for line in docker_ps_output.splitlines():
-            if cluster_name in line:
-                node = next(workers_iter) if 'worker' in line else next(
-                    controls_iter)
+            node = None
+            if f'{cluster_name}-control-plane' in line:
+                node = next(controls_iter)
+            elif f'{cluster_name}-worker' in line:
+                node = next(workers_iter)
+
+            if node is not None:
                 node.container_id = line.split()[0]
 
         assert next(workers_iter, None) is None and next(controls_iter, None) is None, \
-            'Failed to assign container ids to some nodes'
+            f'Failed to assign container ids to some nodes, docker output is:\n {docker_ps_output}'
 
     def setup_node_info(self):
         self.nodes_info = kubectlutils.get_nodes_info()
 
     def init_worker(self, node: WorkerNode):
-        print(f'Initializing worker: {node.name}')
+        print(f'Initializing worker: {node.name}', flush=True)
         self._init_node(node)
-        print(f'worker: {node.name} ready')
+        print(f'worker: {node.name} ready', flush=True)
 
     def init_control(self, node: ControlNode):
-        print(f'Initializing control plane node: {node.name}')
+        print(f'Initializing control plane node: {node.name}', flush=True)
         self._init_node(node)
-        print(f'control plane node: {node.name} ready')
+        print(f'control plane node: {node.name} ready', flush=True)
 
     def run_p4_nic(self, node: K8sNode):
         self._assert_p4_can_be_run_on(node)
-        print(f'Starting P4 NIC on {node.name}')
+        print(f'Starting P4 NIC on {node.name}', flush=True)
         params = node.p4_params
 
         args = [self._BMV2_EXECUTABLE, '-i',
@@ -71,9 +75,9 @@ class NodeInitializer:
         containerutils.docker_exec_detached(node.container_id, *args)
         sleep(self._WAIT_FOR_BMV2_INIT_SECONDS)
         if containerutils.is_process_running(node.container_id, self._BMV2_EXECUTABLE):
-            print(f'P4 NIC is running on {node.name}')
+            print(f'P4 NIC is running on {node.name}', flush=True)
         else:
-            print(f'Failed to run P4 NIC on {node.name}')
+            print(f'Failed to run P4 NIC on {node.name}', flush=True)
 
     def _init_node(self, node: K8sNode):
         self._init_container_requirements(node)
@@ -111,7 +115,7 @@ class NodeInitializer:
     def _install_bmv2(self, node: K8sNode):
         containerutils.copy_and_run_script_in_container(
             node.container_id, self._BMV2_PATH, f'/home/{self._BMV2_FILENAME}')
-        print(f'Installed bmv2 on: {node.name}')
+        print(f'Installed bmv2 on: {node.name}', flush=True)
 
     def _handle_p4_params(self, node: K8sNode):
         params = node.p4_params

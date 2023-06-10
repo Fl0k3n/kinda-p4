@@ -24,6 +24,7 @@ def run_cluster(name: str, kind_cfg_file_path: str, timeout: float):
                        stdout=sp.PIPE,
                        text=True)
     kind_sp.wait(timeout)
+    assert kind_sp.returncode == 0, 'Cluster creation failed'
 
 
 def update_kubectl_cfg(cluster_name: str, kubeconfig_path: str):
