@@ -5,7 +5,7 @@ from util.iputils import Cidr, NetIface
 
 class InternetAccessManager:
     _POD_SUBNET = Cidr('10.244.0.0', 16)
-    _TUNELLED_SUBNET = Cidr('192.168.0.0', 24)
+    _TUNELLED_SUBNET = Cidr('192.168.0.0', 16)
 
     def __init__(self) -> None:
         self.internet_gateway_container_netns: str = None

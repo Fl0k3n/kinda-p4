@@ -1,4 +1,5 @@
 import itertools as it
+import os
 import tempfile
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from typing import Any, Generator, NamedTuple
@@ -27,6 +28,7 @@ class BridgeInfo(NamedTuple):
 
 
 class ClusterBuilder:
+    _KINDA_CONFIG_PATH = os.path.join(os.environ['HOME'], '.kinda')
     _KIND_TIMEOUT_SECONDS = 300
     _NODE_INIT_TIMEOUT_SECONDS = 300
     _MAX_NODES = 127
@@ -34,7 +36,7 @@ class ClusterBuilder:
     # 10.0-100.0.0 networks are recommended
     _FORBIDDEN_NETWORKS = set([
         Cidr("10.244.0.0", 16),   # reserved for pods
-        Cidr("192.168.0.0", 24),  # reserved for tunnels
+        Cidr("192.168.0.0", 16),  # reserved for tunnels
         Cidr("172.0.0.0", 8)      # reserved for kind and bridges
     ])
 
@@ -104,6 +106,9 @@ class ClusterBuilder:
             self.internet_access_mgr.provision_internet_access(
                 self.controls + self.workers)
 
+        print("Writing config for kinda CLI")
+        self._write_kinda_config()
+
         self.built = True
         print("Cluster ready")
 
@@ -122,6 +127,7 @@ class ClusterBuilder:
             f"Node {node_name} wasn't added to cluster and can't be connected"
         self._assert_valid(node_iface)
         self._assert_valid(container_iface)
+        self._assert_valid_container_iface_name(container_iface)
 
         self.connect_tasks.append(ConnectionTask(
             node_name, node_iface, container_id, container_iface, add_default_route_via_container))
@@ -202,10 +208,14 @@ class ClusterBuilder:
                 self.name, kind_cfg_file.name, self._KIND_TIMEOUT_SECONDS)
 
     def _update_cluster_address_translatations(self):
-        for node1, node2 in it.permutations(self.workers + self.controls, 2):
-            iputils.add_dnat_rule(
-                node1.netns_name, node1.internal_cluster_iface.ipv4,
-                node2.internal_cluster_iface.ipv4, node2.net_iface.ipv4)
+        pass
+        # TODO this should be turned on but makes debugging clusters with badly configured networks very hard
+        # commenting this will make kubectl traffic work properly even in such networks
+
+        # for node1, node2 in it.permutations(self.workers + self.controls, 2):
+        #     iputils.add_dnat_rule(
+        #         node1.netns_name, node1.internal_cluster_iface.ipv4,
+        #         node2.internal_cluster_iface.ipv4, node2.net_iface.ipv4)
 
     def _init_nodes(self):
         self.node_initializer.setup_node_info()
@@ -267,12 +277,12 @@ class ClusterBuilder:
     def _create_tunnel_meta(self, n1: K8sNode, n2: K8sNode, node_enumerations: dict[str, int]) -> tuple[NetIface, NetIface]:
         d_num = node_enumerations[n2.name]
         s_num = node_enumerations[n1.name]
-        last_subnet_byte = next(self.tunnel_subnet_generator)
+        byte3, byte4 = next(self.tunnel_subnet_generator)
 
         tun1 = NetIface(f'tgre_{d_num}',
-                        f'192.168.0.{last_subnet_byte}', 31)
+                        f'192.168.{byte3}.{byte4}', 31)
         tun2 = NetIface(f'tgre_{s_num}',
-                        f'192.168.0.{last_subnet_byte + 1}', 31)
+                        f'192.168.{byte3}.{byte4 + 1}', 31)
         return tun1, tun2
 
     def _get_tunnel_target_routes(self, ipv4: str) -> tuple[str, str]:
@@ -304,12 +314,31 @@ class ClusterBuilder:
             raise failed_tasks[0].exception()
 
     def _assert_valid(self, iface: NetIface):
-        iface_net_parts = iface.ipv4.split('.')
         for net in self._FORBIDDEN_NETWORKS:
-            net_parts = net.ipv4.split('.')[:net.netmask // 8 + 1]
-            assert '.'.join(iface_net_parts[:len(net_parts)]) != '.'.join(net_parts), \
+            assert not iputils.is_in_same_subnet(net, iface.cidr), \
                 f'Network {iface.ipv4} is forbidden, pick other one not in {self._FORBIDDEN_NETWORKS}'
 
-    def _create_tunnel_subnet_generator(self) -> Generator[int, None, None]:
-        for i in range(0, 253, 2):
-            yield i
+    def _assert_valid_container_iface_name(self, container_iface: NetIface):
+        for task in self.connect_tasks:
+            if iputils.is_in_same_subnet(task.container_iface.cidr, container_iface.cidr):
+                assert task.container_iface.name == container_iface.name, \
+                    'Container interface name must be the same if 2 nodes connect with it from same network\n' \
+                    f'Got {task.container_iface} and {container_iface}'
+
+    def _write_kinda_config(self):
+        import json
+        cfg = {}
+        cfg['containers'] = {
+            node.name: node.container_id for node in self.workers + self.controls
+        }
+        cfg['naming'] = {
+            node.internal_node_name: node.name for node in self.workers + self.controls
+        }
+
+        with open(self._KINDA_CONFIG_PATH, 'w') as f:
+            json.dump(cfg, f)
+
+    def _create_tunnel_subnet_generator(self) -> Generator[tuple[int, int], None, None]:
+        for subnet in range(0, 255):
+            for i in range(0, 253, 2):
+                yield subnet, i

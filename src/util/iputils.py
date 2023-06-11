@@ -39,6 +39,14 @@ def _iptables_mode(enabled: bool) -> str:
     return '-A' if enabled else '-D'
 
 
+def dot_notation_to_decimal(dotted: str) -> int:
+    return sum(int(byte) * (256 ** (3 - i)) for i, byte in enumerate(dotted.split('.')))
+
+
+def mask_size_to_decimal(mask: int) -> int:
+    return sum((1 << i) for i in range((32 - mask), 32))
+
+
 def run_in_namespace(netns: Netns, *commands: list[str], log_error=True) -> sp.CompletedProcess[str]:
     if netns is not None:
         return _run_sp('ip', 'netns', 'exec', netns, *commands, log_error=log_error)
@@ -173,6 +181,13 @@ def create_gre_tunnel(netns: Netns, tunnel_iface: NetIface, src_ipv4: str, dst_i
     assign_ipv4(netns, tunnel_iface)
     if set_up:
         set_iface_state(netns, tunnel_iface.name, True)
+
+
+def is_in_same_subnet(cidr1: Cidr, cidr2: Cidr) -> bool:
+    mask = mask_size_to_decimal(min(cidr1.netmask, cidr2.netmask))
+    ip1 = dot_notation_to_decimal(cidr1.ipv4)
+    ip2 = dot_notation_to_decimal(cidr2.ipv4)
+    return ((ip1 & mask) ^ (ip2 & mask)) == 0
 
 
 def delete_iface(netns: Netns, iface: NetIface):

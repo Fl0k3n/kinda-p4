@@ -1,0 +1,42 @@
+#!/bin/python
+
+import json
+import os
+import subprocess
+import sys
+
+with open(os.path.join(os.environ['HOME'], '.kinda')) as f:
+    cfg = json.load(f)
+
+# TODO use click or smth
+try:
+    args = sys.argv[1:]
+    node_name = args[0]
+    if node_name == 'who':
+        internal_name = args[1]
+        name = cfg['naming'].get(internal_name, None)
+        if name is None:
+            print(f'No node with internal name {internal_name}')
+        else:
+            print(name)
+    elif node_name == 'reverse':
+        name = args[1]
+        internal_name = None
+        for int_name, n_name in cfg['naming'].items():
+            if name == n_name:
+                internal_name = int_name
+                break
+        if internal_name is not None:
+            print(internal_name)
+        else:
+            print(f'No node with name {name}')
+    else:
+        commands = args[1:]
+
+        container_id = cfg['containers'][node_name]
+        subprocess.run(['sudo', 'docker', 'exec', '-it', container_id,
+                        *commands])
+except:
+    print(
+        f'Usage: {sys.argv[0]} <node name> [command to run on node]', file=sys.stderr)
+    exit(1)
