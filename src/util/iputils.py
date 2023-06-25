@@ -13,18 +13,39 @@ class Cidr(NamedTuple):
     ipv4: str
     netmask: int
 
+    @property
+    def first_octet(self):
+        return get_nth_octet(self.ipv4, 0)
+
+    @property
+    def second_octet(self):
+        return get_nth_octet(self.ipv4, 1)
+
+    @property
+    def third_octet(self):
+        return get_nth_octet(self.ipv4, 2)
+
+    @property
+    def fourth_octet(self):
+        return get_nth_octet(self.ipv4, 3)
+
+
+class TrafficControlInfo(NamedTuple):
+    latency_ms: int | None
+    rate_kbitps: int | None
+    burst_kbitps: int | None
+
 
 @dataclass
 class NetIface:
     name: str
     ipv4: str
     netmask: int
+    egress_traffic_control: TrafficControlInfo | None = None
 
     @property
     def cidr(self) -> Cidr:
         return Cidr(self.ipv4, self.netmask)
-
-# TODO error handling
 
 
 def _run_sp(*commands: list[str], log_error=True) -> sp.CompletedProcess[str]:
@@ -35,12 +56,16 @@ def _run_sp(*commands: list[str], log_error=True) -> sp.CompletedProcess[str]:
     return res
 
 
-def _iptables_mode(enabled: bool) -> str:
-    return '-A' if enabled else '-D'
-
-
 def dot_notation_to_decimal(dotted: str) -> int:
     return sum(int(byte) * (256 ** (3 - i)) for i, byte in enumerate(dotted.split('.')))
+
+
+def decimal_to_dot_notation(decimal_repr: int) -> str:
+    parts = []
+    for _ in range(4):
+        parts.append(str(decimal_repr % 256))
+        decimal_repr //= 256
+    return '.'.join(reversed(parts))
 
 
 def mask_size_to_decimal(mask: int) -> int:
@@ -54,7 +79,7 @@ def run_in_namespace(netns: Netns, *commands: list[str], log_error=True) -> sp.C
 
 
 def random_iface_suffix() -> str:
-    return str(random.randint(10000, 100000))
+    return str(random.randint(100, 999))
 
 
 def create_veth_pair(netns: Netns, iface1: NetIface, iface2: NetIface, set_up: bool = False):
@@ -121,8 +146,8 @@ def get_host_ipv4_in_network_with(ipv4: str, netmask: int) -> str:
 
 
 def add_dnat_rule(netns: Netns, src_ipv4: str, prev_dest_ipv4: str, new_dest_ipv4: str):
-    run_in_namespace(netns, 'iptables', '-t', 'nat', '-A', 'OUTPUT', '-d',
-                     prev_dest_ipv4, '-s', src_ipv4, '-j', 'DNAT', '--to-destination', new_dest_ipv4)
+    run_in_namespace(netns, 'iptables', '-t', 'nat', '-I', 'OUTPUT', '-d',
+                     prev_dest_ipv4, '-j', 'DNAT', '--to-destination', new_dest_ipv4)
 
 
 def resolve_hostnames_to_ipv4(hostname: str) -> list[str]:
@@ -157,7 +182,7 @@ def connect_container_to_bridge(bridge: NetIface, host_veth: NetIface, container
 
 
 def set_forwarding_through(netns: Netns, iface: NetIface, enabled: bool):
-    mode = _iptables_mode(enabled)
+    mode = '-A' if enabled else '-D'
     run_in_namespace(netns, 'iptables', mode, 'FORWARD',
                      '-o', iface.name, '-j', 'ACCEPT')
     run_in_namespace(netns, 'iptables', mode, 'FORWARD',
@@ -165,7 +190,7 @@ def set_forwarding_through(netns: Netns, iface: NetIface, enabled: bool):
 
 
 def set_bridged_traffic_masquerading(netns: Netns, bridge: NetIface, enabled: bool):
-    mode = _iptables_mode(enabled)
+    mode = '-A' if enabled else '-D'
     run_in_namespace(netns, 'iptables', '-t', 'nat', mode, 'POSTROUTING', '-s',
                      f'{bridge.ipv4}/{bridge.netmask}', '!', '-o', bridge.name, '-j', 'MASQUERADE')
 
@@ -183,11 +208,42 @@ def create_gre_tunnel(netns: Netns, tunnel_iface: NetIface, src_ipv4: str, dst_i
         set_iface_state(netns, tunnel_iface.name, True)
 
 
+def flush_established_connections(netns: Netns):
+    run_in_namespace(netns, 'conntrack', '-F')
+
+
+def apply_egress_traffic_control(netns: Netns, iface: NetIface):
+    tc = iface.egress_traffic_control
+    if all(field is None for field in tc):
+        return
+
+    command = f'tc qdisc add dev {iface.name} root tbf'
+    if tc.latency_ms is not None:
+        command += f' latency {tc.latency_ms}ms'
+    if tc.rate_kbitps is not None:
+        command += f' rate {tc.rate_kbitps}kbit'
+    if tc.burst_kbitps is not None:
+        command += f' burst {tc.burst_kbitps}kbit'
+
+    run_in_namespace(netns, *command.split())
+
+
 def is_in_same_subnet(cidr1: Cidr, cidr2: Cidr) -> bool:
     mask = mask_size_to_decimal(min(cidr1.netmask, cidr2.netmask))
     ip1 = dot_notation_to_decimal(cidr1.ipv4)
     ip2 = dot_notation_to_decimal(cidr2.ipv4)
     return ((ip1 & mask) ^ (ip2 & mask)) == 0
+
+
+def get_subnet(cidr: Cidr) -> Cidr:
+    mask = mask_size_to_decimal(cidr.netmask)
+    ip = dot_notation_to_decimal(cidr.ipv4)
+    subnet_ip = decimal_to_dot_notation(ip & mask)
+    return Cidr(subnet_ip, mask)
+
+
+def get_nth_octet(ipv4: str, n: int) -> str:
+    return ipv4.split('.')[n]
 
 
 def delete_iface(netns: Netns, iface: NetIface):

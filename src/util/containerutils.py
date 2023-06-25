@@ -12,7 +12,8 @@ def create_namespace_name(container_pid: str) -> str:
 
 
 def attach_netns_to_host(container_pid: str, netns_name: str):
-    res = sp.run(['sudo', 'ip', 'netns', 'attach', netns_name, container_pid])
+    res = sp.run(['sudo', 'ip', 'netns', 'attach', netns_name,
+                 container_pid], capture_output=True, text=True)
     assert res.returncode == 0, f'Failed to attach namespace: {netns_name} to host'
 
 
@@ -36,7 +37,7 @@ def docker_ps() -> str:
 
 def copy_to_container(container_id: str, host_path: str, container_path: str):
     sp.run(['sudo', 'docker', 'cp', host_path,
-           f'{container_id}:{container_path}'])
+           f'{container_id}:{container_path}'], capture_output=True, text=True)
 
 
 def turn_off_tcp_checksum_offloading(container_id: str, iface_name: str):

@@ -11,15 +11,15 @@ with open(os.path.join(os.environ['HOME'], '.kinda')) as f:
 # TODO use click or smth
 try:
     args = sys.argv[1:]
-    node_name = args[0]
-    if node_name == 'who':
+    command = args[0]
+    if command == 'who':
         internal_name = args[1]
         name = cfg['naming'].get(internal_name, None)
         if name is None:
             print(f'No node with internal name {internal_name}')
         else:
             print(name)
-    elif node_name == 'reverse':
+    elif command == 'reverse':
         name = args[1]
         internal_name = None
         for int_name, n_name in cfg['naming'].items():
@@ -31,6 +31,7 @@ try:
         else:
             print(f'No node with name {name}')
     else:
+        node_name = command
         commands = args[1:]
 
         container_id = cfg['containers'][node_name]

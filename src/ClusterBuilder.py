@@ -1,4 +1,5 @@
 import itertools as it
+import json
 import os
 import tempfile
 from concurrent.futures import Future, ThreadPoolExecutor, wait
@@ -7,10 +8,11 @@ from typing import Any, Generator, NamedTuple
 import util.containerutils as containerutils
 import util.iputils as iputils
 import util.kindutils as kindutils
+from constants import KIND_CIDR, POD_CIDR, TUN_CIDR
 from InternetAccessManager import InternetAccessManager
 from K8sNode import ControlNode, K8sNode, WorkerNode
 from NodeInitializer import NodeInitializer
-from util.iputils import Cidr, NetIface
+from util.iputils import NetIface
 from util.p4 import P4Params
 
 
@@ -35,9 +37,9 @@ class ClusterBuilder:
     _MAX_POOL_SIZE = 32
     # 10.0-100.0.0 networks are recommended
     _FORBIDDEN_NETWORKS = set([
-        Cidr("10.244.0.0", 16),   # reserved for pods
-        Cidr("192.168.0.0", 16),  # reserved for tunnels
-        Cidr("172.0.0.0", 8)      # reserved for kind and bridges
+        POD_CIDR,
+        KIND_CIDR,
+        TUN_CIDR
     ])
 
     def __init__(self, name: str, node_initializer: NodeInitializer, internet_access_mgr: InternetAccessManager) -> None:
@@ -48,6 +50,7 @@ class ClusterBuilder:
         self.worker_nodes: dict[str, WorkerNode] = {}
         self.internet_access_requested = False
         self.built = False
+        self.route_kubectl_traffic_through_virtual_network = False
 
         self.container_netns: set[str] = set()
         self.connect_tasks: list[ConnectionTask] = []
@@ -81,6 +84,10 @@ class ClusterBuilder:
             f'Max nodes count exceeded, ({self._MAX_NODES})'
         self.worker_nodes[name] = WorkerNode(name, with_p4_nic, p4_params)
 
+    def enable_kubectl_routing_through_virtual_network(self):
+        '''Kubectl traffic is routed through host bridge by default for debugging convenience'''
+        self.route_kubectl_traffic_through_virtual_network = True
+
     def build(self):
         if self.built:
             print("Cluster is already built")
@@ -97,7 +104,7 @@ class ClusterBuilder:
 
         print("Setting up cluster networking...")
         self._setup_connections()
-        self._update_cluster_address_translatations()
+        self._update_cluster_address_translations()
         self._setup_pod_traffic_tunneling()
         self._setup_p4_nics()
 
@@ -162,12 +169,21 @@ class ClusterBuilder:
                 container_ns, bridge_slave_iface, container_iface)
             iputils.assign_ipv4(node.netns_name, node_iface)
 
+            if container_iface.egress_traffic_control is not None:
+                iputils.apply_egress_traffic_control(
+                    container_ns, bridge_slave_iface)
+            if node.net_iface.egress_traffic_control is not None:
+                external_iface = node.p4_net_iface if node.has_p4_nic else node.net_iface
+                iputils.apply_egress_traffic_control(
+                    node.netns_name, external_iface)
+
             # checksum offloading leads to invalid TCP checksums which prevent iptables from
             # NATing such packets, making TCP broken in the cluster
             containerutils.turn_off_tcp_checksum_offloading(
                 node.container_id, node.net_iface.name)
 
             if add_default_route_via_container:
+                node.default_route_ipv4 = container_iface.ipv4
                 iputils.add_default_route(
                     node.netns_name, container_iface.ipv4)
 
@@ -207,15 +223,21 @@ class ClusterBuilder:
             kindutils.run_cluster(
                 self.name, kind_cfg_file.name, self._KIND_TIMEOUT_SECONDS)
 
-    def _update_cluster_address_translatations(self):
-        pass
-        # TODO this should be turned on but makes debugging clusters with badly configured networks very hard
-        # commenting this will make kubectl traffic work properly even in such networks
+    def _update_cluster_address_translations(self):
+        # TODO there is still some IPv6 traffic routed via host, consider adding ipv6in4 tunneling
+        if self.route_kubectl_traffic_through_virtual_network:
+            for node1, node2 in it.permutations(self.workers + self.controls, 2):
+                iputils.add_dnat_rule(
+                    node1.netns_name, node1.internal_cluster_iface.ipv4,
+                    node2.internal_cluster_iface.ipv4, node2.net_iface.ipv4)
 
-        # for node1, node2 in it.permutations(self.workers + self.controls, 2):
-        #     iputils.add_dnat_rule(
-        #         node1.netns_name, node1.internal_cluster_iface.ipv4,
-        #         node2.internal_cluster_iface.ipv4, node2.net_iface.ipv4)
+                if node1.default_route_ipv4 is not None:
+                    iputils.add_route(
+                        node1.netns_name, node2.internal_cluster_iface.ipv4, node1.default_route_ipv4)
+
+            for node in self.workers + self.controls:
+                # DNAT isn't applied for previously established connections
+                iputils.flush_established_connections(node.netns_name)
 
     def _init_nodes(self):
         self.node_initializer.setup_node_info()
@@ -269,7 +291,7 @@ class ClusterBuilder:
             iputils.create_bridge(container_ns, bridge)
 
         bridge_slave_iface = NetIface(
-            f'{bridge.name}_slave{len(bridge_to_slaves[bridge_info])}', None, None)
+            f'{bridge.name}_slave{len(bridge_to_slaves[bridge_info])}', None, None, bridge.egress_traffic_control)
         bridge_to_slaves[bridge_info].append(bridge_slave_iface)
 
         return bridge_slave_iface
@@ -280,9 +302,9 @@ class ClusterBuilder:
         byte3, byte4 = next(self.tunnel_subnet_generator)
 
         tun1 = NetIface(f'tgre_{d_num}',
-                        f'192.168.{byte3}.{byte4}', 31)
+                        f'{TUN_CIDR.first_octet}.{TUN_CIDR.second_octet}.{byte3}.{byte4}', 31)
         tun2 = NetIface(f'tgre_{s_num}',
-                        f'192.168.{byte3}.{byte4 + 1}', 31)
+                        f'{TUN_CIDR.first_octet}.{TUN_CIDR.second_octet}.{byte3}.{byte4 + 1}', 31)
         return tun1, tun2
 
     def _get_tunnel_target_routes(self, ipv4: str) -> tuple[str, str]:
@@ -326,7 +348,6 @@ class ClusterBuilder:
                     f'Got {task.container_iface} and {container_iface}'
 
     def _write_kinda_config(self):
-        import json
         cfg = {}
         cfg['containers'] = {
             node.name: node.container_id for node in self.workers + self.controls
@@ -335,8 +356,12 @@ class ClusterBuilder:
             node.internal_node_name: node.name for node in self.workers + self.controls
         }
 
-        with open(self._KINDA_CONFIG_PATH, 'w') as f:
-            json.dump(cfg, f)
+        try:
+            with open(self._KINDA_CONFIG_PATH, 'w') as f:
+                json.dump(cfg, f)
+        except Exception as e:
+            print('Failed to write kinda config, CLI won\'t work as expected')
+            print(e)
 
     def _create_tunnel_subnet_generator(self) -> Generator[tuple[int, int], None, None]:
         for subnet in range(0, 255):

@@ -15,6 +15,7 @@ class K8sNode(ABC):
         self.p4_internal_iface: NetIface = None
 
         self.net_iface: NetIface = None
+        self.default_route_ipv4: str = None
         self.container_id: str = None
         self.pid: str = None
         self.netns_name: str = None

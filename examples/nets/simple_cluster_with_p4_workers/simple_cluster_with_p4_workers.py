@@ -13,7 +13,7 @@ r1.update_meta(args={
     "image": "kathara/base",
     "exec_commands": [
         "ifconfig eth0 10.10.1.1/24 up",
-        "route add -net 10.10.2.0/24 gw 10.10.1.2 dev eth0"
+        "route add -net 10.10.2.0/24 gw 10.10.1.2 dev eth0",
         "ip route add default via 10.10.1.2"
     ]
 })

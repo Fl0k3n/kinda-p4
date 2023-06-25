@@ -35,4 +35,6 @@ def update_kubectl_cfg(cluster_name: str, kubeconfig_path: str):
 
 
 def delete_cluster(cluster_name: str):
-    sp.run(['sudo', 'kind', 'delete', 'clusters', cluster_name])
+    res = sp.run(['sudo', 'kind', 'delete', 'clusters',
+                  cluster_name], capture_output=True, text=True)
+    print(res.stdout)

@@ -1,0 +1,15 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: internet-job
+spec:
+  template:
+    metadata:
+      name: internet-job
+    spec:
+      containers:
+        - name: job
+          image: busybox
+          command: ["wget", "google.com"]
+          # command: ["while", "true;", "do", "curl", "google.com;", "done"]
+      restartPolicy: Never

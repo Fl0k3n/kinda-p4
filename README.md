@@ -28,7 +28,7 @@ Create a Python script with your topology and cluster, see [examples/nets](examp
 
 ## Usage
 
-Kubectl is automatically configured to interact with the cluster. Kubectl traffic is directly passed from the host to the control plane, but any cluster-internal traffic is routed only via the provided virtual network (enscapsulted with GRE).
+Kubectl is automatically configured to interact with the cluster. Cluster-internal traffic is routed only via the provided virtual network (enscapsulted with GRE), user can also enable routing Kubernetes control plane traffic (e.g. Kubectl) through virtual network (which is disabled by default for easier debugging).
 
 
 Internet access can be enabled through any container in a virtualized network; DockerHub access is routed directly through the host and thus doesn't require enabling internet access in the virtualized network itself (meaning you should be able to download docker images).

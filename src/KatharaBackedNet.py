@@ -46,6 +46,7 @@ class KatharaBackedCluster:
     def _cleanup(self):
         self.cluster_builder.destroy()
         Kathara.get_instance().undeploy_lab(lab_name=self.kathara_lab.name)
+        Kathara.get_instance().wipe()
 
 
 def container_id(machine: KatharaMachine | str) -> str:

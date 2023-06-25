@@ -1,12 +1,10 @@
 import util.iputils as iputils
+from constants import KIND_CIDR, POD_CIDR, TUN_CIDR
 from K8sNode import K8sNode
-from util.iputils import Cidr, NetIface
+from util.iputils import NetIface
 
 
 class InternetAccessManager:
-    _POD_SUBNET = Cidr('10.244.0.0', 16)
-    _TUNELLED_SUBNET = Cidr('192.168.0.0', 16)
-
     def __init__(self) -> None:
         self.internet_gateway_container_netns: str = None
         self.cluster_nodes: list[K8sNode] = None
@@ -58,8 +56,7 @@ class InternetAccessManager:
         iputils.set_bridged_traffic_masquerading(
             iputils.HOST_NS, self.host_bridge, True)
 
-        # TODO not sure if both of these are neccesary but it shouldn't hurt
-        for subnet in (self._POD_SUBNET, self._TUNELLED_SUBNET):
+        for subnet in (POD_CIDR, TUN_CIDR):
             iputils.masquerade_internet_facing_traffic(
                 self.internet_gateway_container_netns, subnet, self.container_veth)
 
@@ -74,8 +71,8 @@ class InternetAccessManager:
         for subnet in range(base_subnet, 255):
             try:
                 iputils.get_host_ipv4_in_network_with(
-                    f'172.{subnet}.0.0', 16)
+                    f'{KIND_CIDR.first_octet}.{subnet}.0.0', 16)
             except:
-                return NetIface(name, f'172.{subnet}.0.1', 16)
+                return NetIface(name, f'{KIND_CIDR.first_octet}.{subnet}.0.1', 16)
 
         raise Exception("Failed to create bridge on host")
