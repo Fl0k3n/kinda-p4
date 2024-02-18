@@ -173,7 +173,10 @@ class ClusterBuilder:
                 iputils.apply_egress_traffic_control(
                     container_ns, bridge_slave_iface)
             if node.net_iface.egress_traffic_control is not None:
-                external_iface = node.p4_net_iface if node.has_p4_nic else node.net_iface
+                external_iface = node.net_iface
+                if node.has_p4_nic:
+                    external_iface = node.p4_net_iface
+                    node.p4_net_iface.egress_traffic_control = node.net_iface.egress_traffic_control
                 iputils.apply_egress_traffic_control(
                     node.netns_name, external_iface)
 

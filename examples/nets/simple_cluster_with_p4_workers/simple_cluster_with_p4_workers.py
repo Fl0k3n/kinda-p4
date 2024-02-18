@@ -29,35 +29,37 @@ r2.update_meta(args={
     ]
 })
 
-with KatharaBackedCluster('test-cluster', network) as cluster:
-    cluster.enable_internet_access_via(container_id(r2))
+p4_code_path = './examples/p4/basic_arp_compiled.json'
 
-    cluster.add_worker('w1', with_p4_nic=True, p4_params=P4Params(
-        initial_compiled_script_host_path='./examples/p4/basic_arp_compiled.json', run_nic=True))
-    cluster.add_worker('w2', with_p4_nic=True, p4_params=P4Params(
-        initial_compiled_script_host_path='./examples/p4/basic_arp_compiled.json', run_nic=True))
+with KatharaBackedCluster('test-cluster', network) as cluster:
+    cluster.add_worker('w1', with_p4_nic=False, p4_params=P4Params(p4_code_path))
+    cluster.add_worker('w2', with_p4_nic=True, p4_params=P4Params(p4_code_path))
     cluster.add_control('c1', with_p4_nic=False)
 
     cluster.connect_with_container(
         'w1',
-        node_iface=NetIface('eth10k', '10.10.0.2', 24),
+        node_iface=NetIface('eth1', '10.10.0.2', 24),
         container_id=container_id(r1),
-        container_iface=NetIface('br_1c', '10.10.0.1', 24)
+        container_iface=NetIface('br_1', '10.10.0.1', 24)
     )
 
     cluster.connect_with_container(
         'w2',
-        node_iface=NetIface('eth10k', '10.10.0.3', 24),
+        node_iface=NetIface('eth1', '10.10.0.3', 24),
         container_id=container_id(r1),
-        container_iface=NetIface('br_1c', '10.10.0.1', 24)
+        container_iface=NetIface('br_1', '10.10.0.1', 24)
     )
 
     cluster.connect_with_container(
         'c1',
-        node_iface=NetIface('eth10k', '10.10.2.2', 24),
+        node_iface=NetIface('eth1', '10.10.2.2', 24),
         container_id=container_id(r2),
-        container_iface=NetIface('eth10c', '10.10.2.1', 24)
+        container_iface=NetIface('eth1', '10.10.2.1', 24)
     )
 
+    cluster.enable_internet_access_via(container_id(r2))
     cluster.build()
+
+
+    
     input('press enter to terminate cluster')

@@ -116,7 +116,7 @@ with KatharaBackedCluster('test-cluster', network) as cluster:
 
     cluster.add_worker('w1', with_p4_nic=False, p4_params=P4Params(
         initial_compiled_script_host_path='./examples/p4/basic_arp_compiled.json', run_nic=True))
-    cluster.add_worker('w2', with_p4_nic=False, p4_params=P4Params(
+    cluster.add_worker('w2', with_p4_nic=True, p4_params=P4Params(
         initial_compiled_script_host_path='./examples/p4/basic_arp_compiled.json', run_nic=True))
     cluster.add_control('c1', with_p4_nic=False)
 
