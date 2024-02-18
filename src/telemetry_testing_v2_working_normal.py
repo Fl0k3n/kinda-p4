@@ -1,38 +1,10 @@
 from Kathara.model.Lab import Lab
 
-from KatharaBackedNet import KatharaBackedCluster, container_id
+from KatharaBackedNet import (KatharaBackedCluster, container_id, copy_file,
+                              execute_simple_switch_cmds, run_in_container,
+                              simple_switch_CLI)
 from util.iputils import NetIface, TrafficControlInfo
 from util.p4 import P4Params
-
-
-def simple_switch_CLI(*cmds: list[str]) -> list[str]:
-    return [
-        "echo '#!/bin/bash' >> s.sh",
-        "echo 'while [[ $(pgrep simple_switch) -eq 0 ]]; do sleep 1; done' >> s.sh",
-        "echo 'until simple_switch_CLI <<< 'help'; do sleep 1; done' >> s.sh",
-        *[f"echo \"echo '{cmd}' | simple_switch_CLI\" >> s.sh" for cmd in cmds],
-        "chmod u+x s.sh",
-    ]
-
-
-def execute_simple_switch_cmds(name):
-    import os
-    os.system("sudo docker ps | grep _" + name +
-              "_ | awk '{print $1}' | xargs -I {} sudo docker exec {} ./s.sh")
-
-
-def copy_file(path, container_name):
-    import os
-    name = os.path.basename(path)
-    os.system("sudo docker ps | grep _" + container_name +
-              "_ | awk '{print $1}' | xargs -I {} sudo docker cp " + path + " {}:" + name)
-
-
-def run_in_container(name, command):
-    import os
-    os.system("sudo docker ps | grep _" + name +
-              "_ | awk '{print $1}' | xargs -I {} sudo docker exec {} " + command)
-
 
 network = Lab("test1")
 
@@ -41,7 +13,8 @@ network.connect_machine_to_link(r1.name, 'A')
 network.connect_machine_to_link(r1.name, 'B')
 
 r1.update_meta(args={
-    "image": "jaxa/p4app-epoch-moje",
+    # "image": "jaxa/p4app-epoch-moje",
+    "image": "flok3n/p4c-epoch:latest",
     "exec_commands": [
         "ip link set eth0 address 00:00:0a:00:00:04",
         "ip link set eth1 address 00:00:0a:00:00:05",
@@ -55,10 +28,11 @@ r1.update_meta(args={
             'table_add ingress.Forward.arp_exact ingress.Forward.reply_arp 10.10.0.1 => 00:00:0a:00:00:04',
             'table_add ingress.Forward.arp_exact ingress.Forward.reply_arp 10.10.1.1 => 00:00:0a:00:00:05',
             'table_add tb_activate_source activate_source 1 =>',
+            # 'table_add tb_int_source configure_source 10.10.0.2&&&0xFFFFFFFF 10.10.3.2&&&0xFFFFFFFF 0x11FF&&&0xFFFF 0x22FF&&&0xFFFF => 4 10 8 0xCC00 0',
             'table_add tb_int_source configure_source 10.10.0.2&&&0xFFFFFFFF 10.10.3.2&&&0xFFFFFFFF 0x11FF&&&0xFFFF 0x22FF&&&0xFFFF => 4 10 8 0xFF00 0',
-            'table_add tb_int_transit configure_transit => 1 1500',
+            'table_add tb_int_transit configure_transit 0.0.0.0/0 => 1 1500',
         ),
-        "simple_switch -i 1@eth0 -i 2@eth1 int.json",
+        "simple_switch -i 1@eth0 -i 2@eth1 int2.json",
     ]
 })
 
@@ -67,8 +41,8 @@ network.connect_machine_to_link(r2.name, 'B')
 network.connect_machine_to_link(r2.name, 'C')
 
 r2.update_meta(args={
-    "image": "jaxa/p4app-epoch-moje",
-    # "image": "flok3n/p4c-epoch:latest",
+    # "image": "jaxa/p4app-epoch-moje",
+    "image": "flok3n/p4c-epoch:latest",
     "exec_commands": [
         "ip link set eth0 address 00:00:0a:00:00:06",
         "ip link set eth1 address 00:00:0a:00:00:07",
@@ -79,9 +53,9 @@ r2.update_meta(args={
             'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.1.0/24 => 00:00:0a:00:00:06 00:00:0a:00:00:05 1',
             'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.2.0/24 => 00:00:0a:00:00:07 00:00:0a:00:00:08 2',
             'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.3.0/24 => 00:00:0a:00:00:07 00:00:0a:00:00:08 2',
-            'table_add tb_int_transit configure_transit => 2 1500',
+            'table_add tb_int_transit configure_transit 0.0.0.0/0 => 2 1500',
         ),
-        "simple_switch -i 1@eth0 -i 2@eth1 int.json",
+        "simple_switch -i 1@eth0 -i 2@eth1 int2.json",
     ]
 })
 
@@ -90,7 +64,8 @@ network.connect_machine_to_link(r3.name, 'C')
 network.connect_machine_to_link(r3.name, 'D')
 
 r3.update_meta(args={
-    "image": "jaxa/p4app-epoch-moje",
+    # "image": "jaxa/p4app-epoch-moje",
+    "image": "flok3n/p4c-epoch:latest",
     "exec_commands": [
         "ip link set eth0 address 00:00:0a:00:00:08",
         "ip link set eth1 address 00:00:0a:00:00:09",
@@ -108,10 +83,10 @@ r3.update_meta(args={
             'table_add ingress.Forward.arp_exact ingress.Forward.reply_arp 10.10.4.1 => 00:00:0a:00:00:0a',
             'table_add tb_int_sink configure_sink 2 => 3',
             'mirroring_add 1 3',
-            'table_add tb_int_reporting send_report => 00:00:0a:00:00:0a 10.10.4.1 00:00:0a:00:00:03 10.10.4.2 6000',
-            'table_add tb_int_transit configure_transit => 3 1500',
+            'table_add tb_int_reporting send_report 0.0.0.0/0 => 00:00:0a:00:00:0a 10.10.4.1 00:00:0a:00:00:03 10.10.4.2 6000',
+            'table_add tb_int_transit configure_transit 0.0.0.0/0 => 3 1500',
         ),
-        "simple_switch -i 1@eth0 -i 2@eth1 -i 3@eth2 int.json",
+        "simple_switch -i 1@eth0 -i 2@eth1 -i 3@eth2 int2.json",
     ]
 })
 
@@ -127,6 +102,7 @@ h1.update_meta(args={
         "ip link set eth0 address 00:00:0a:00:00:01",
         "ip route add default via 10.10.0.1",
         "ethtool -K eth0 rx off tx off",
+        "ip link set dev eth0 mtu 1000"
     ]
 })
 
@@ -137,6 +113,7 @@ h2.update_meta(args={
         "ip link set eth0 address 00:00:0a:00:00:02",
         "ip route add default via 10.10.3.1",
         "ethtool -K eth0 rx off tx off",
+        "ip link set dev eth0 mtu 1000",
     ]
 })
 
@@ -164,7 +141,9 @@ with KatharaBackedCluster('test-cluster', network) as cluster:
     for r in (r1, r2, r3):
         execute_simple_switch_cmds(r.name)
     copy_file('/home/flok3n/develop/virtual/ubuntu20/src/sender.py', h1.name)
+    copy_file('/home/flok3n/develop/virtual/ubuntu20/src/sender_tcp.py', h1.name)
     copy_file('/home/flok3n/develop/virtual/ubuntu20/src/receiver.py', h2.name)
+    copy_file('/home/flok3n/develop/virtual/ubuntu20/src/receiver_tcp.py', h2.name)
     copy_file('/home/flok3n/develop/virtual/telemetry2/int-platforms/platforms/bmv2-mininet/int.p4app/utils/int_collector_logging.py', collector.name)
     run_in_container(collector.name, 'mkdir -p /tmp/p4app_logs')
     print('debug')
