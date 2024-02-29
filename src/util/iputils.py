@@ -42,6 +42,7 @@ class NetIface:
     ipv4: str
     netmask: int
     egress_traffic_control: TrafficControlInfo | None = None
+    mac: str | None = None
 
     @property
     def cidr(self) -> Cidr:
@@ -85,7 +86,6 @@ def random_iface_suffix() -> str:
 def create_veth_pair(netns: Netns, iface1: NetIface, iface2: NetIface, set_up: bool = False):
     run_in_namespace(netns, 'ip', 'link', 'add', iface1.name,
                      'type', 'veth', 'peer', 'name', iface2.name)
-
     if set_up:
         set_iface_state(netns, iface1.name, True)
         set_iface_state(netns, iface2.name, True)
@@ -104,6 +104,12 @@ def set_iface_state(netns: Netns, iface_name: str, up: bool):
 def assign_ipv4(netns: Netns, iface: NetIface):
     run_in_namespace(netns, 'ip', 'address', 'add',
                      f'{iface.ipv4}/{iface.netmask}', 'dev', iface.name)
+
+
+def assign_mac(netns: Netns, iface: NetIface):
+    assert iface.mac is not None
+    run_in_namespace(netns, 'ip', 'link', 'set',
+                     iface.name, 'address', iface.mac)
 
 
 def connect_namespaces(netns1: Netns, netns2: Netns, iface1: NetIface, iface2: NetIface, set_up: bool = True):

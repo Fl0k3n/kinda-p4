@@ -21,6 +21,15 @@ spec:
       labels:
         app: nodeapp-redis
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: hosting
+                    operator: In
+                    values:
+                      - redis
       containers:
         - name: nodeapp-redis
           image: redis
@@ -57,6 +66,15 @@ spec:
       labels:
         app: node
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: hosting
+                    operator: In
+                    values:
+                      - node
       containers:
         - name: nodeapp
           image: flok3n/sample-app:3.0.0

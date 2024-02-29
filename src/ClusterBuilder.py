@@ -22,6 +22,7 @@ class ConnectionTask(NamedTuple):
     container_id: str
     container_iface: NetIface
     add_default_route_via_container: bool
+    as_bridge_in_container: bool
 
 
 class BridgeInfo(NamedTuple):
@@ -64,7 +65,7 @@ class ClusterBuilder:
     def controls(self) -> list[ControlNode]:
         return list(self.control_nodes.values())
 
-    def add_control(self, name: str, with_p4_nic: bool = False, p4_params: P4Params = None):
+    def add_control(self, name: str, with_p4_nic: bool = False, p4_params: P4Params = None) -> ControlNode:
         # Kind creates haproxy container when multiple control plane nodes are requested, which is problematic
         assert len(
             self.control_nodes) == 0, 'For now only 1 control plane node is supported'
@@ -75,14 +76,16 @@ class ClusterBuilder:
         assert len(self.worker_nodes) + len(self.control_nodes) <= self._MAX_NODES, \
             f'Max nodes count exceeded, ({self._MAX_NODES})'
         self.control_nodes[name] = ControlNode(name, with_p4_nic, p4_params)
+        return self.control_nodes[name]
 
-    def add_worker(self, name: str, with_p4_nic: bool = False, p4_params: P4Params = None):
+    def add_worker(self, name: str, with_p4_nic: bool = False, p4_params: P4Params = None) -> WorkerNode:
         if with_p4_nic and p4_params is None:
             p4_params = P4Params()
 
         assert len(self.worker_nodes) + len(self.control_nodes) <= self._MAX_NODES, \
             f'Max nodes count exceeded, ({self._MAX_NODES})'
         self.worker_nodes[name] = WorkerNode(name, with_p4_nic, p4_params)
+        return self.worker_nodes[name]
 
     def enable_kubectl_routing_through_virtual_network(self):
         '''Kubectl traffic is routed through host bridge by default for debugging convenience'''
@@ -127,7 +130,7 @@ class ClusterBuilder:
         self._clear_attached_namespaces()
 
     def connect_with_container(self, node_name: str, node_iface: NetIface, container_id: str, container_iface: NetIface,
-                               add_default_route_via_container: bool = True):
+                               add_default_route_via_container: bool = True, as_bridge_in_container: bool = False):
         assert node_name not in [x.node_name for x in self.connect_tasks], \
             f'Node {node_name} can have at most one connection with virtualized network'
         assert node_name in self.control_nodes or node_name in self.worker_nodes, \
@@ -137,7 +140,7 @@ class ClusterBuilder:
         self._assert_valid_container_iface_name(container_iface)
 
         self.connect_tasks.append(ConnectionTask(
-            node_name, node_iface, container_id, container_iface, add_default_route_via_container))
+            node_name, node_iface, container_id, container_iface, add_default_route_via_container, as_bridge_in_container))
 
     def enable_internet_access_via(self, container_id: str):
         self.internet_access_mgr.internet_gateway_container_netns = self._attach_container_namespace_to_host(
@@ -147,14 +150,16 @@ class ClusterBuilder:
     def _setup_connections(self):
         bridge_to_slaves: dict[BridgeInfo, list[NetIface]] = {}
 
-        for node_name, node_iface, container_id, container_iface, add_default_route_via_container in self.connect_tasks:
+        for node_name, node_iface, container_id, container_iface, \
+                add_default_route_via_container, as_bridge_in_container in self.connect_tasks:
             node = self._get_node(node_name)
             node.net_iface = node_iface
 
             container_ns = self._attach_container_namespace_to_host(
                 container_id)
-            bridge_slave_iface = self._create_bridge_and_get_slave_meta(
-                container_ns, container_iface, bridge_to_slaves)
+            if as_bridge_in_container:
+                bridge_slave_iface = self._create_bridge_and_get_slave_meta(
+                    container_ns, container_iface, bridge_to_slaves)
 
             if node.has_p4_nic:
                 iputils.connect_namespaces(
@@ -162,16 +167,22 @@ class ClusterBuilder:
                 iputils.create_veth_pair(
                     node.netns_name, node.p4_internal_iface, node_iface, set_up=True)
             else:
+                iface = bridge_slave_iface if as_bridge_in_container else container_iface
                 iputils.connect_namespaces(
-                    node.netns_name, container_ns, node_iface, bridge_slave_iface, set_up=True)
+                    node.netns_name, container_ns, node_iface, iface, set_up=True)
 
-            iputils.assign_bridge_master(
-                container_ns, bridge_slave_iface, container_iface)
+            if as_bridge_in_container:
+                iputils.assign_bridge_master(
+                    container_ns, bridge_slave_iface, container_iface)
             iputils.assign_ipv4(node.netns_name, node_iface)
 
+            for iface, netns in zip((node_iface, container_iface), (node.netns_name, container_ns)):
+                if iface.mac is not None:
+                    iputils.assign_mac(netns, iface)
+
             if container_iface.egress_traffic_control is not None:
-                iputils.apply_egress_traffic_control(
-                    container_ns, bridge_slave_iface)
+                iface = bridge_slave_iface if as_bridge_in_container else container_iface
+                iputils.apply_egress_traffic_control(container_ns, iface)
             if node.net_iface.egress_traffic_control is not None:
                 external_iface = node.net_iface
                 if node.has_p4_nic:

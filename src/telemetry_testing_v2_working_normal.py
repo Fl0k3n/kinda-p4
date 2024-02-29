@@ -140,10 +140,14 @@ p4c-bm2-ss --p4v 16 /p4/int.p4 -o "int.json" -DBMV2
 with KatharaBackedCluster('test-cluster', network) as cluster:
     for r in (r1, r2, r3):
         execute_simple_switch_cmds(r.name)
-    copy_file('/home/flok3n/develop/virtual/ubuntu20/src/sender.py', h1.name)
-    copy_file('/home/flok3n/develop/virtual/ubuntu20/src/sender_tcp.py', h1.name)
-    copy_file('/home/flok3n/develop/virtual/ubuntu20/src/receiver.py', h2.name)
-    copy_file('/home/flok3n/develop/virtual/ubuntu20/src/receiver_tcp.py', h2.name)
+    copy_file(
+        '/home/flok3n/develop/virtual/ubuntu20/src/examples/k8s/sr-job/sender.py', h1.name)
+    copy_file(
+        '/home/flok3n/develop/virtual/ubuntu20/src/examples/k8s/sr-job/sender_tcp.py', h1.name)
+    copy_file(
+        '/home/flok3n/develop/virtual/ubuntu20/src/examples/k8s/sr-job/receiver.py', h2.name)
+    copy_file(
+        '/home/flok3n/develop/virtual/ubuntu20/src/examples/k8s/sr-job/receiver_tcp.py', h2.name)
     copy_file('/home/flok3n/develop/virtual/telemetry2/int-platforms/platforms/bmv2-mininet/int.p4app/utils/int_collector_logging.py', collector.name)
     run_in_container(collector.name, 'mkdir -p /tmp/p4app_logs')
     print('debug')

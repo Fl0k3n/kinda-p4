@@ -1,0 +1,5 @@
+FROM python:3.10.13-alpine3.18
+
+COPY ./sender.py .
+
+ENTRYPOINT ["python3", "/sender.py"]

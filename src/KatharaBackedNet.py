@@ -81,3 +81,9 @@ def copy_file(path, container_name):
 def run_in_container(name, command):
     os.system("sudo docker ps | grep _" + name +
               "_ | awk '{print $1}' | xargs -I {} sudo docker exec {} " + command)
+
+
+def run_in_kathara_machine(machine: KatharaMachine | str, commands: list[str]):
+    cid = container_id(machine)
+    for cmd in commands:
+        os.system(f'sudo docker exec -d {cid} {cmd}')

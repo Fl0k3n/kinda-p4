@@ -1,4 +1,9 @@
 import socket
+import sys
+
+
+def log(text):
+    print(text, flush=True)
 
 
 def sender():
@@ -9,8 +14,12 @@ def sender():
     sender_address = ('', 4607)  # Empty string for localhost
 
     # Receiver address and port
-    receiver_address = ('10.10.3.2', 8959)
+    if len(sys.argv) < 3:
+        receiver_address = ('10.10.3.2', 8959)
+    else:
+        receiver_address = (sys.argv[1], int(sys.argv[2]))
 
+    log('sending to ' + str(receiver_address))
     # Message to send
     message = "Hello, receiver! This is a test message."
 
@@ -19,12 +28,12 @@ def sender():
         sock.bind(sender_address)
 
         # Send data
-        print('Sending:', message)
+        log('Sending: ' + message)
         sock.sendto(message.encode(), receiver_address)
 
     finally:
         # Close the socket
-        print('Closing socket')
+        log('Closing socket')
         sock.close()
 
 
