@@ -11,10 +11,10 @@ spec:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:
           - matchExpressions:
-              - key: hosting
+              - key: sname
                 operator: In
                 values:
-                  - node
+                  - w1
   containers:
     - name: sender
       image: flok3n/sender_tcp:1.0.1
@@ -40,10 +40,10 @@ spec:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:
           - matchExpressions:
-              - key: hosting
+              - key: sname
                 operator: In
                 values:
-                  - redis
+                  - w3
   containers:
     - name: receiver
       image: flok3n/receiver_tcp:1.0.0

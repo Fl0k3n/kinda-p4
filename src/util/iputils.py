@@ -132,6 +132,10 @@ def add_route(netns: Netns, dest_ipv4: str, next_hop: str):
     run_in_namespace(netns, 'ip', 'route', 'add', dest_ipv4, 'via', next_hop)
 
 
+def del_route(netns: Netns, dest_ipv4: str, next_hop: str):
+    run_in_namespace(netns, 'ip', 'route', 'del', dest_ipv4, 'via', next_hop)
+
+
 def get_interface_info(netns: Netns, iface_name: str) -> NetIface:
     iface_data = run_in_namespace(
         netns, 'ip', 'address', 'show', 'dev', iface_name).stdout

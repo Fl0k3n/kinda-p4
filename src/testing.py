@@ -81,7 +81,9 @@
 #     print("DEBUG")
 from Kathara.model.Lab import Lab
 
-from KatharaBackedNet import KatharaBackedCluster, container_id
+from KatharaBackedNet import (KatharaBackedCluster, container_id, copy_file,
+                              execute_simple_switch_cmds, run_in_container,
+                              run_in_kathara_machine, simple_switch_CLI)
 from util.iputils import NetIface, TrafficControlInfo
 from util.p4 import P4Params
 
@@ -115,25 +117,24 @@ with KatharaBackedCluster('test-cluster', network) as cluster:
     cluster.enable_kubectl_routing_through_virtual_network()
 
     cluster.add_worker('w1', with_p4_nic=False, p4_params=P4Params(
-        initial_compiled_script_host_path='./examples/p4/basic_arp_compiled.json', run_nic=True))
-    cluster.add_worker('w2', with_p4_nic=True, p4_params=P4Params(
-        initial_compiled_script_host_path='./examples/p4/basic_arp_compiled.json', run_nic=True))
+        initial_compiled_script_host_path='./examples/p4/basic_arp_compiled.json', run_nic=False))
+    # cluster.add_worker('w2', with_p4_nic=False, p4_params=P4Params(
+    #     initial_compiled_script_host_path='./examples/p4/basic_arp_compiled.json', run_nic=False))
     cluster.add_control('c1', with_p4_nic=False)
 
     cluster.connect_with_container(
         'w1',
-        node_iface=NetIface('eth10k', '10.10.0.2', 24,
-                            egress_traffic_control=TrafficControlInfo(latency_ms=500, rate_kbitps=1000, burst_kbitps=16)),
+        node_iface=NetIface('eth10k', '10.10.0.2', 24),
         container_id=container_id(r1),
-        container_iface=NetIface('br_1c', '10.10.0.1', 24)
+        container_iface=NetIface('ethx1', '10.10.0.1', 24)
     )
 
-    cluster.connect_with_container(
-        'w2',
-        node_iface=NetIface('eth10k', '10.10.0.3', 24),
-        container_id=container_id(r1),
-        container_iface=NetIface('br_1c', '10.10.0.1', 24)
-    )
+    # cluster.connect_with_container(
+    #     'w2',
+    #     node_iface=NetIface('eth10k', '10.10.0.3', 24),
+    #     container_id=container_id(r1),
+    #     container_iface=NetIface('ethx2', '10.10.0.1', 24)
+    # )
 
     cluster.connect_with_container(
         'c1',
@@ -143,4 +144,9 @@ with KatharaBackedCluster('test-cluster', network) as cluster:
     )
 
     cluster.build()
+
+    # run_in_kathara_machine(r1, [
+    #     "ethtool -K ethx1 rx off tx off",
+    # ])
+
     print('press enter to terminate cluster')

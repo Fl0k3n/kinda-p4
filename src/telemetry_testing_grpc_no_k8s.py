@@ -14,7 +14,12 @@ r1 = network.get_or_new_machine('r1')
 network.connect_machine_to_link(r1.name, 'A')
 
 r1.update_meta(args={
-    "image": "flok3n/p4c-epoch:latest",
+    "image": "flok3n/p4c-epoch_thrift:latest",
+    # remember that this creates new interface, fix all references (bump ethX to ethX+1 for all node interfaces after setting bridged: True)
+    "bridged": True,
+    "ports": [
+        "9560:9559"
+    ],
     "exec_commands": [
         *simple_switch_CLI(
             'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.0.2/32 => 00:00:0a:00:00:06 00:00:0a:00:00:01 2',
@@ -34,9 +39,14 @@ r1.update_meta(args={
 r2 = network.get_or_new_machine('r2')
 network.connect_machine_to_link(r2.name, 'A')
 network.connect_machine_to_link(r2.name, 'B')
+network.connect_machine_to_link(r2.name, 'H')
 
 r2.update_meta(args={
-    "image": "flok3n/p4c-epoch:latest",
+    "image": "flok3n/p4c-epoch_thrift:latest",
+    "bridged": True,
+    "ports": [
+        "9561:9559"
+    ],
     "exec_commands": [
         *simple_switch_CLI(
             'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.2.2/32 => 00:00:0a:00:00:09 00:00:0a:00:00:02 3',
@@ -52,52 +62,70 @@ r2.update_meta(args={
 r3 = network.get_or_new_machine('r3')
 network.connect_machine_to_link(r3.name, 'B')
 r3.update_meta(args={
-    "image": "flok3n/p4c-epoch:latest",
+    "image": "flok3n/p4c-epoch_thrift:latest",
+    "bridged": True,
+    "ports": [
+        "9562:9559"
+    ],
     "exec_commands": [
         *simple_switch_CLI(
-            'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.4.2/32 => 00:00:0a:00:00:0b 00:00:0a:00:00:03 2',
-            'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.5.2/32 => 00:00:0a:00:00:0c 00:00:0a:00:00:04 3',
-            'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.0.0/24 => 00:00:0a:00:00:0a 00:00:0a:00:00:08 1',
-            'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.1.0/24 => 00:00:0a:00:00:0a 00:00:0a:00:00:08 1',
-            'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.2.0/24 => 00:00:0a:00:00:0a 00:00:0a:00:00:08 1',
-            'table_add ingress.Forward.arp_exact ingress.Forward.reply_arp 10.10.4.1 => 00:00:0a:00:00:0b',
-            'table_add ingress.Forward.arp_exact ingress.Forward.reply_arp 10.10.5.1 => 00:00:0a:00:00:0c',
+            # 'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.4.2/32 => 00:00:0a:00:00:0b 00:00:0a:00:00:03 2',
+            # 'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.5.2/32 => 00:00:0a:00:00:0c 00:00:0a:00:00:04 3',
+            # 'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.0.0/24 => 00:00:0a:00:00:0a 00:00:0a:00:00:08 1',
+            # 'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.1.0/24 => 00:00:0a:00:00:0a 00:00:0a:00:00:08 1',
+            # 'table_add ingress.Forward.ipv4_lpm ingress.Forward.ipv4_forward 10.10.2.0/24 => 00:00:0a:00:00:0a 00:00:0a:00:00:08 1',
+            # 'table_add ingress.Forward.arp_exact ingress.Forward.reply_arp 10.10.4.1 => 00:00:0a:00:00:0b',
+            # 'table_add ingress.Forward.arp_exact ingress.Forward.reply_arp 10.10.5.1 => 00:00:0a:00:00:0c',
             # 'table_add tb_int_sink configure_sink 2 => 1',
-            # 'mirroring_add 1 1',
+            'mirroring_add 1 1',
             # 'table_add tb_int_reporting send_report 0.0.0.0/0 => 00:00:0a:00:00:0a 10.10.3.2 00:00:0a:00:00:08 10.10.2.2 6000',
             # 'table_add tb_int_transit configure_transit 0.0.0.0/0 => 3 1500',
         ),
     ]
 })
 
+
+collector = network.get_or_new_machine('col')
+network.connect_machine_to_link(collector.name, 'H')
+
+collector.update_meta(args={
+    "image": "kathara/base",
+    "exec_commands": [
+        "ifconfig eth0 10.10.2.2/24 up",
+        "ip link set eth0 address 00:00:0a:00:00:02",
+        "ip route add default via 10.10.2.1",
+        "ethtool -K eth0 rx off tx off",
+    ]
+})
+
+
 with KatharaBackedCluster('test-cluster', network) as cluster:
     w1 = cluster.add_worker('w1')
-    w2 = cluster.add_worker('w2')
     w3 = cluster.add_worker('w3')
-    cluster.add_control('c1')
+    c1 = cluster.add_control('c1')
 
     cluster.connect_with_container(
         'w1',
         node_iface=NetIface('eth10k', '10.10.0.2', 24,
                             mac="00:00:0a:00:00:01"),
         container_id=container_id(r1),
-        container_iface=NetIface('eth1', '10.10.0.1', 24)
+        container_iface=NetIface('eth2', '10.10.0.1', 24)
     )
 
-    cluster.connect_with_container(
-        'w2',
-        node_iface=NetIface('eth10k', '10.10.2.2', 24,
-                            mac="00:00:0a:00:00:02"),
-        container_id=container_id(r2),
-        container_iface=NetIface('eth2', '10.10.2.1', 24)
-    )
+    # cluster.connect_with_container(
+    #     'w2',
+    #     node_iface=NetIface('eth10k', '10.10.2.2', 24,
+    #                         mac="00:00:0a:00:00:02"),
+    #     container_id=container_id(r2),
+    #     container_iface=NetIface('eth3', '10.10.2.1', 24)
+    # )
 
     cluster.connect_with_container(
         'w3',
         node_iface=NetIface('eth10k', '10.10.4.2', 24,
                             mac="00:00:0a:00:00:03"),
         container_id=container_id(r3),
-        container_iface=NetIface('eth1', '10.10.4.1', 24)
+        container_iface=NetIface('eth2', '10.10.4.1', 24)
     )
 
     cluster.connect_with_container(
@@ -105,38 +133,47 @@ with KatharaBackedCluster('test-cluster', network) as cluster:
         node_iface=NetIface('eth10k', '10.10.5.2', 24,
                             mac="00:00:0a:00:00:04"),
         container_id=container_id(r3),
-        container_iface=NetIface('eth2', '10.10.5.1', 24)
+        container_iface=NetIface('eth3', '10.10.5.1', 24)
     )
 
     cluster.build()
 
     run_in_kathara_machine(r1, commands=[
         "ip link set eth0 address 00:00:0a:00:00:05",
-        "ip link set eth1 address 00:00:0a:00:00:06",
-        "simple_switch -i 1@eth0 -i 2@eth1 int4.json",
+        "ip link set eth2 address 00:00:0a:00:00:06",
+        "ethtool -K eth0 rx off tx off",
+        "ethtool -K eth2 rx off tx off",
+        "simple_switch_grpc -i 1@eth0 -i 2@eth2 --no-p4",
     ])
 
     run_in_kathara_machine(r2, commands=[
         "ip link set eth0 address 00:00:0a:00:00:07",
         "ip link set eth1 address 00:00:0a:00:00:08",
         "ip link set eth2 address 00:00:0a:00:00:09",
-        "simple_switch -i 1@eth0 -i 2@eth1 -i 3@eth2 int4.json",
+        "ethtool -K eth0 rx off tx off",
+        "ethtool -K eth1 rx off tx off",
+        "ethtool -K eth2 rx off tx off",
+        "simple_switch_grpc -i 1@eth0 -i 2@eth1 -i 3@eth2 --no-p4",
     ])
 
     run_in_kathara_machine(r3, commands=[
         "ip link set eth0 address 00:00:0a:00:00:0a",
-        "ip link set eth1 address 00:00:0a:00:00:0b",
-        "ip link set eth2 address 00:00:0a:00:00:0c",
-        "simple_switch -i 1@eth0 -i 2@eth1 -i 3@eth2 int4.json",
+        "ip link set eth2 address 00:00:0a:00:00:0b",
+        "ip link set eth3 address 00:00:0a:00:00:0c",
+        "ethtool -K eth0 rx off tx off",
+        "ethtool -K eth2 rx off tx off",
+        "ethtool -K eth3 rx off tx off",
+        "simple_switch_grpc -i 1@eth0 -i 2@eth2 -i 3@eth3 --no-p4",
+        # "simple_switch -i 1@eth0 -i 2@eth2 -i 3@eth3 int4.json",
     ])
 
-    for r in (r1, r2, r3):
-        execute_simple_switch_cmds(r.name)
+    # for r in (r1, r2, r3):
+    #     execute_simple_switch_cmds(r.name)
+    execute_simple_switch_cmds(r3.name)
 
-    cutils.copy_to_container(
-        w2.container_id,
+    copy_file(
         '/home/flok3n/develop/virtual/telemetry2/int-platforms/platforms/bmv2-mininet/int.p4app/utils/int_collector_logging.py',
-        '/int_collector_logging.py'
+        collector.name,
     )
     cutils.copy_to_container(
         w1.container_id, '/home/flok3n/develop/virtual/ubuntu20/src/examples/k8s/sr-job/sender_tcp.py', '/sender_tcp.py')
@@ -148,9 +185,12 @@ with KatharaBackedCluster('test-cluster', network) as cluster:
         w3.container_id, '/home/flok3n/develop/virtual/ubuntu20/src/examples/k8s/sr-job/receiver.py', '/receiver.py')
     cutils.docker_exec_detached(
         w1.container_id, "ip", "link", "set", "dev", "eth10k", "mtu", "1000")
-    cutils.docker_exec_detached(
-        w2.container_id, 'mkdir', '-p', '/tmp/p4app_logs')
+    run_in_container(collector.name, 'mkdir -p /tmp/p4app_logs')
     os.system(f"kubectl label node {w1.internal_node_name} hosting=node")
     os.system(f"kubectl label node {w3.internal_node_name} hosting=redis")
+
+    for node in (w1, w3, c1):
+        os.system(
+            f"kubectl label node {node.internal_node_name} sname={node.name}")
 
     print('press enter to terminate cluster')

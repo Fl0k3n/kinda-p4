@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: nodeapp-config
 data:
-  redis_url: redis://redis-service.default.svc.cluster.local:6379
+  redis_url: redis://redis-service.default.svc.cluster.local:6400
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -47,7 +47,7 @@ spec:
     app: nodeapp-redis
   ports:
     - protocol: TCP
-      port: 6379
+      port: 6400
       targetPort: 6379
 ---
 apiVersion: apps/v1

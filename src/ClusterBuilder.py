@@ -52,6 +52,8 @@ class ClusterBuilder:
         self.internet_access_requested = False
         self.built = False
         self.route_kubectl_traffic_through_virtual_network = False
+        # iface with routes through it
+        self.simple_host_connections: list[tuple[NetIface, list[str]]] = []
 
         self.container_netns: set[str] = set()
         self.connect_tasks: list[ConnectionTask] = []
@@ -126,6 +128,11 @@ class ClusterBuilder:
         if self.internet_access_requested:
             self.internet_access_mgr.teardown_internet_access()
 
+        for iface, routes in self.simple_host_connections:
+            for route in routes:
+                iputils.del_route(iputils.HOST_NS, route, iface.ipv4)
+            iputils.delete_iface(iputils.HOST_NS, iface)
+
         kindutils.delete_cluster(self.name)
         self._clear_attached_namespaces()
 
@@ -146,6 +153,23 @@ class ClusterBuilder:
         self.internet_access_mgr.internet_gateway_container_netns = self._attach_container_namespace_to_host(
             container_id)
         self.internet_access_requested = True
+
+    def establish_simple_host_connection(self, container_id: str, host_iface: NetIface, container_iface: NetIface,
+                                         routes: list[str] = None, set_ip_in_container: bool = False):
+        container_ns = self._attach_container_namespace_to_host(container_id)
+        iputils.create_veth_pair(iputils.HOST_NS, host_iface, container_iface)
+        iputils.move_iface_to_netns(
+            iputils.HOST_NS, container_ns, container_iface)
+        iputils.assign_ipv4(iputils.HOST_NS, host_iface)
+        if set_ip_in_container:
+            iputils.assign_ipv4(container_ns, container_iface)
+        iputils.set_iface_state(iputils.HOST_NS, host_iface.name, up=True)
+        iputils.set_iface_state(container_ns, container_iface.name, up=True)
+        if routes is None:
+            routes = []
+        for route in routes:
+            iputils.add_route(iputils.HOST_NS, route, container_iface.ipv4)
+        self.simple_host_connections.append((host_iface, routes))
 
     def _setup_connections(self):
         bridge_to_slaves: dict[BridgeInfo, list[NetIface]] = {}
