@@ -1,6 +1,6 @@
 import util.iputils as iputils
-from constants import KIND_CIDR, POD_CIDR, TUN_CIDR
-from K8sNode import K8sNode
+from core.constants import KIND_CIDR, POD_CIDR, TUN_CIDR
+from core.K8sNode import K8sNode
 from util.iputils import NetIface
 
 

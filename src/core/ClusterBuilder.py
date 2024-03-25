@@ -8,10 +8,10 @@ from typing import Any, Generator, NamedTuple
 import util.containerutils as containerutils
 import util.iputils as iputils
 import util.kindutils as kindutils
-from constants import KIND_CIDR, POD_CIDR, TUN_CIDR
-from InternetAccessManager import InternetAccessManager
-from K8sNode import ControlNode, K8sNode, WorkerNode
-from NodeInitializer import NodeInitializer
+from core.constants import KIND_CIDR, POD_CIDR, TUN_CIDR
+from core.InternetAccessManager import InternetAccessManager
+from core.K8sNode import ControlNode, K8sNode, WorkerNode
+from core.NodeInitializer import NodeInitializer
 from util.iputils import NetIface
 from util.p4 import P4Params
 

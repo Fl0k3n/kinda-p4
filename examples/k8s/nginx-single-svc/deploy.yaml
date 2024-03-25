@@ -6,12 +6,13 @@ spec:
   selector:
     matchLabels:
       app: nginx
-  replicas: 1 # tells deployment to run 2 pods matching the template
+  replicas: 5 # tells deployment to run 2 pods matching the template
   template:
     metadata:
       labels:
         app: nginx
     spec:
+      schedulerName: internal-telemetry
       containers:
         - name: nginx
           image: nginx:1.14.2

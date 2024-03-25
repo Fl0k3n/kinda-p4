@@ -5,13 +5,13 @@ from time import sleep
 import util.containerutils as containerutils
 import util.iputils as iputils
 import util.kubectlutils as kubectlutils
-from K8sNode import ControlNode, K8sNode, WorkerNode
+from core.K8sNode import ControlNode, K8sNode, WorkerNode
 from util.iputils import NetIface
 from util.kubectlutils import NodesInfo
 from util.p4 import P4Params
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_SCRIPTS_DIR = os.path.join(_THIS_DIR, 'scripts')
+_SCRIPTS_DIR = os.path.join(_THIS_DIR, '..', 'scripts')
 
 
 class NodeInitializer:

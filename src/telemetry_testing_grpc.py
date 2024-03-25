@@ -3,12 +3,22 @@ import os
 from Kathara.model.Lab import Lab
 
 import util.containerutils as cutils
-from KatharaBackedNet import (KatharaBackedCluster, container_id, copy_file,
-                              execute_simple_switch_cmds, run_in_container,
-                              run_in_kathara_machine, simple_switch_CLI)
+from net.KatharaBackedNet import (KatharaBackedCluster, container_id,
+                                  run_in_kathara_machine)
+from net.util import execute_simple_switch_cmds, simple_switch_CLI
 from util.iputils import NetIface
 
 network = Lab("test1")
+
+'''
+         extern 
+           |
+          r4 
+           |
+r1 - r2 - r3-----
+|     |    |    | 
+w1    w2   w3   c1
+'''
 
 r1 = network.get_or_new_machine('r1')
 network.connect_machine_to_link(r1.name, 'A')
@@ -57,16 +67,33 @@ r3.update_meta(args={
     ]
 })
 
+r4 = network.get_or_new_machine('r4')
+network.connect_machine_to_link(r3.name, 'C')
+network.connect_machine_to_link(r4.name, 'C')
+r4.update_meta(args={
+    "image": "flok3n/p4c-epoch_thrift:latest",
+    "bridged": True,
+    "ports": [
+        "9563:9559"
+    ],
+    "exec_commands": [
+        *simple_switch_CLI(
+            'mirroring_add 1 1',
+        ),
+    ]
+})
+
+
 extern = network.get_or_new_machine('extern')
-network.connect_machine_to_link(r3.name, 'E')  # external
+network.connect_machine_to_link(r4.name, 'E')
 network.connect_machine_to_link(extern.name, 'E')
 
 extern.update_meta(args={
     "image": "kathara/base",
     "exec_commands": [
-        "ifconfig eth0 10.10.6.2/24 up",
-        "ip link set eth0 address 00:00:0a:00:0f:01",
-        "ip route add default via 10.10.6.1",
+        "ifconfig eth0 10.10.7.2/24 up",
+        "ip link set eth0 address 00:00:0a:00:0f:02",
+        "ip route add default via 10.10.7.1",
         "ethtool -K eth0 rx off tx off",
         "ip link set dev eth0 mtu 1000"
     ]
@@ -110,15 +137,6 @@ with KatharaBackedCluster('test-cluster', network) as cluster:
         container_iface=NetIface('eth4', '10.10.5.1', 24)
     )
 
-    # cluster.establish_simple_host_connection(
-    #     container_id=container_id(r3),
-    #     host_iface=NetIface("k8sveth_h", '10.10.6.2',
-    #                         24, mac="00:00:0a:00:0f:01"),
-    #     container_iface=NetIface(
-    #         "k8sveth_c", '10.10.6.1', 24, mac="00:00:0a:00:0f:02"),
-    #     routes=["10.10.0.0/16"]
-    # )
-
     cluster.build()
 
     run_in_kathara_machine(r1, commands=[
@@ -141,22 +159,27 @@ with KatharaBackedCluster('test-cluster', network) as cluster:
 
     run_in_kathara_machine(r3, commands=[
         "ip link set eth0 address 00:00:0a:00:00:0a",
-        "ip link set eth0 address 00:00:0a:00:0f:02",
+        "ip link set eth1 address 00:00:0a:00:00:0d",
         "ip link set eth2 address 00:00:0a:00:00:0b",
         "ip link set eth3 address 00:00:0a:00:00:0c",
         "ethtool -K eth0 rx off tx off",
         "ethtool -K eth1 rx off tx off",
         "ethtool -K eth3 rx off tx off",
         "ethtool -K eth4 rx off tx off",
-        "ethtool -K k8sveth_c rx off tx off",
-        # "simple_switch_grpc -i 1@eth0 -i 2@eth2 -i 3@eth3 --no-p4",
         "simple_switch_grpc -i 1@eth0 -i 2@eth3 -i 3@eth4 -i 4@eth1 --no-p4",
-        # "simple_switch -i 1@eth0 -i 2@eth2 -i 3@eth3 int4.json",
+    ])
+
+    run_in_kathara_machine(r4, commands=[
+        "ip link set eth0 address 00:00:0a:00:00:0e",
+        "ip link set eth1 address 00:00:0a:00:0f:01",
+        "ethtool -K eth0 rx off tx off",
+        "ethtool -K eth1 rx off tx off",
+        "simple_switch_grpc -i 1@eth0 -i 2@eth1 --no-p4",
     ])
 
     # os.system("ethtool -K k8sveth_h rx off tx off")
 
-    for r in (r1, r2, r3):
+    for r in (r1, r2, r3, r4):
         execute_simple_switch_cmds(r.name)
 
     cutils.copy_to_container(
