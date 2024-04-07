@@ -7,4 +7,5 @@ apt install -y --no-install-recommends \
     inetutils-traceroute \
     net-tools \
     tcpdump \
+    dnsutils \
     vim

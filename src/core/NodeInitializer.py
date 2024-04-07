@@ -8,6 +8,7 @@ import util.kubectlutils as kubectlutils
 from core.K8sNode import ControlNode, K8sNode, WorkerNode
 from util.iputils import NetIface
 from util.kubectlutils import NodesInfo
+from util.logger import logger
 from util.p4 import P4Params
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -51,18 +52,18 @@ class NodeInitializer:
         self.nodes_info = kubectlutils.get_nodes_info()
 
     def init_worker(self, node: WorkerNode):
-        print(f'Initializing worker: {node.name}')
+        logger.debug(f'Initializing worker: {node.name}')
         self._init_node(node)
-        print(f'worker: {node.name} ready')
+        logger.debug(f'worker: {node.name} ready')
 
     def init_control(self, node: ControlNode):
-        print(f'Initializing control plane node: {node.name}')
+        logger.debug(f'Initializing control plane node: {node.name}')
         self._init_node(node)
-        print(f'control plane node: {node.name} ready')
+        logger.debug(f'control plane node: {node.name} ready')
 
     def run_p4_nic(self, node: K8sNode):
         self._assert_p4_can_be_run_on(node)
-        print(f'Starting P4 NIC on {node.name}')
+        logger.debug(f'Starting P4 NIC on {node.name}')
         params = node.p4_params
 
         args = [self._BMV2_EXECUTABLE, '-i',
@@ -75,9 +76,9 @@ class NodeInitializer:
         containerutils.docker_exec_detached(node.container_id, *args)
         sleep(self._WAIT_FOR_BMV2_INIT_SECONDS)
         if containerutils.is_process_running(node.container_id, self._BMV2_EXECUTABLE):
-            print(f'P4 NIC is running on {node.name}')
+            logger.info(f'P4 NIC is running on {node.name}')
         else:
-            print(f'Failed to run P4 NIC on {node.name}')
+            logger.error(f'Failed to run P4 NIC on {node.name}')
 
     def _init_node(self, node: K8sNode):
         self._init_container_requirements(node)
@@ -115,7 +116,7 @@ class NodeInitializer:
     def _install_bmv2(self, node: K8sNode):
         containerutils.copy_and_run_script_in_container(
             node.container_id, self._BMV2_PATH, f'/home/{self._BMV2_FILENAME}')
-        print(f'Installed bmv2 on: {node.name}')
+        logger.info(f'Installed bmv2 on: {node.name}')
 
     def _handle_p4_params(self, node: K8sNode):
         params = node.p4_params

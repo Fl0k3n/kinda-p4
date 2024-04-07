@@ -21,14 +21,14 @@ def receiver():
 
     # Listen for incoming connections
     sock.listen(1)
-
+    i = 0
     while True:
         # Wait for a connection
         log('Waiting for a connection...')
         connection, client_address = sock.accept()
 
         try:
-            log('Connection from ' + str(client_address))
+            log(f'{i}: Connection from ' + str(client_address))
 
             # Receive the data in small chunks and reassemble it
             data = b''
@@ -40,8 +40,9 @@ def receiver():
 
             if data:
                 # Print the received message
-                log('Received: ' + data.decode())
-
+                log('Received message of length' + str(len(data.decode())))
+        except Exception as e:
+            log(f'{i}: failed to receive: {e}')
         finally:
             # Clean up the connection
             connection.close()

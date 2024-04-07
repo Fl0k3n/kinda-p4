@@ -82,11 +82,13 @@ class IncSwitchMeta(NodeMeta):
     COMMAND = "simple_switch_grpc"
 
     def __init__(self, image="flok3n/p4c-epoch_thrift:latest", program: str = None, open_grpc=True,
-                 grpc_port: Optional[int] = None, grpc_internal_port=9559, startup_commands: list[str] = None) -> None:
+                 grpc_port: Optional[int] = None, grpc_internal_port=9559,
+                 startup_commands: list[str] = None, simple_switch_cli_commands: list[str] = None) -> None:
         self.image = image
         self.program = None
         self.open_grpc = open_grpc
         self.grpc_internal_port = grpc_internal_port
+        self.simple_switch_cli_commands = simple_switch_cli_commands
         if open_grpc and grpc_port is None:
             self.grpc_port = IncSwitchMeta.GRPC_LOCAL_BASE_PORT + \
                 IncSwitchMeta.GRPC_PORT_COUNTER
@@ -94,6 +96,8 @@ class IncSwitchMeta(NodeMeta):
         else:
             self.grpc_port = grpc_port
         self.startup_commands = startup_commands if startup_commands is not None else []
+        if self.simple_switch_cli_commands:
+            self.startup_commands.extend(self.simple_switch_cli_commands)
 
     def get_run_command(self, iface_names: list[str]) -> str:
         cmd = self.COMMAND

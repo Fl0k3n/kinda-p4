@@ -8,6 +8,7 @@ from Kathara.parser.netkit.LabParser import LabParser
 from core.ClusterBuilder import ClusterBuilder
 from core.InternetAccessManager import InternetAccessManager
 from core.NodeInitializer import NodeInitializer
+from util.logger import logger
 
 
 class KatharaBackedCluster:
@@ -25,9 +26,9 @@ class KatharaBackedCluster:
         return KatharaBackedCluster(cluster_name, lab)
 
     def __enter__(self) -> ClusterBuilder:
-        print('Deploying Kathara lab...')
+        logger.info('Deploying Kathara lab...')
         cluster = self._setup(first_try=True)
-        print('Kathara lab ready')
+        logger.info('Kathara lab ready')
         return cluster
 
     def __exit__(self, *args):

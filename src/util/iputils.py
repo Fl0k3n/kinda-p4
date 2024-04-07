@@ -5,6 +5,8 @@ import subprocess as sp
 from dataclasses import dataclass
 from typing import NamedTuple
 
+from util.logger import logger
+
 Netns = str | None
 HOST_NS: Netns = None
 
@@ -14,20 +16,24 @@ class Cidr(NamedTuple):
     netmask: int
 
     @property
-    def first_octet(self):
+    def first_octet(self) -> str:
         return get_nth_octet(self.ipv4, 0)
 
     @property
-    def second_octet(self):
+    def second_octet(self) -> str:
         return get_nth_octet(self.ipv4, 1)
 
     @property
-    def third_octet(self):
+    def third_octet(self) -> str:
         return get_nth_octet(self.ipv4, 2)
 
     @property
-    def fourth_octet(self):
+    def fourth_octet(self) -> str:
         return get_nth_octet(self.ipv4, 3)
+
+    @property
+    def masked_ip(self) -> str:
+        return f'{self.ipv4}/{self.netmask}'
 
 
 class TrafficControlInfo(NamedTuple):
@@ -52,8 +58,8 @@ class NetIface:
 def _run_sp(*commands: list[str], log_error=True) -> sp.CompletedProcess[str]:
     res = sp.run(['sudo', *commands], capture_output=True, text=True)
     if log_error and res.returncode != 0:
-        print(f'Command {commands}; returned error: {res.returncode}')
-        print(f'std_err: {res.stderr}')
+        logger.error(
+            f'Command {commands}; returned error: {res.returncode}\nstd_err: {res.stderr}')
     return res
 
 
@@ -249,7 +255,7 @@ def get_subnet(cidr: Cidr) -> Cidr:
     mask = mask_size_to_decimal(cidr.netmask)
     ip = dot_notation_to_decimal(cidr.ipv4)
     subnet_ip = decimal_to_dot_notation(ip & mask)
-    return Cidr(subnet_ip, mask)
+    return Cidr(subnet_ip, cidr.netmask)
 
 
 def get_nth_octet(ipv4: str, n: int) -> str:

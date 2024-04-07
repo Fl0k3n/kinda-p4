@@ -2,6 +2,7 @@ import util.iputils as iputils
 from core.constants import KIND_CIDR, POD_CIDR, TUN_CIDR
 from core.K8sNode import K8sNode
 from util.iputils import NetIface
+from util.logger import logger
 
 
 class InternetAccessManager:
@@ -28,8 +29,8 @@ class InternetAccessManager:
             iputils.delete_iface(iputils.HOST_NS, self.host_veth)
             iputils.delete_iface(iputils.HOST_NS, self.host_bridge)
         except Exception as e:
-            print("Exception while removing internet access")
-            print(e)
+            logger.error(
+                "Exception while removing internet access", exc_info=e)
 
     def _create_host_bridge(self):
         self.host_bridge = self._get_host_bridge_meta()

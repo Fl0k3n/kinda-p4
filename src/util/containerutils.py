@@ -2,7 +2,7 @@ import subprocess as sp
 
 
 def get_container_pid(container_id: str) -> str:
-    output = sp.run(['sudo', 'docker', 'inspect', '-f', '{{.State.Pid}}', container_id],
+    output = sp.run(['docker', 'inspect', '-f', '{{.State.Pid}}', container_id],
                     capture_output=True, text=True)
     return output.stdout.strip()
 
@@ -12,18 +12,18 @@ def create_namespace_name(container_pid: str) -> str:
 
 
 def attach_netns_to_host(container_pid: str, netns_name: str):
-    res = sp.run(['sudo', 'ip', 'netns', 'attach', netns_name,
+    res = sp.run(['ip', 'netns', 'attach', netns_name,
                  container_pid], capture_output=True, text=True)
     assert res.returncode == 0, f'Failed to attach namespace: {netns_name} to host'
 
 
 def docker_exec_it(container_id: str, *commands: list[str]) -> sp.CompletedProcess[str]:
-    return sp.run(['sudo', 'docker', 'exec', '-it', container_id, *commands], text=True,
+    return sp.run(['docker', 'exec', '-it', container_id, *commands], text=True,
                   capture_output=True)
 
 
 def docker_exec_detached(container_id: str, *commands: list[str]):
-    return sp.run(['sudo', 'docker', 'exec', '-d', container_id, *commands], text=True, capture_output=True)
+    return sp.run(['docker', 'exec', '-d', container_id, *commands], text=True, capture_output=True)
 
 
 def is_process_running(container_id: str, proc_name: str) -> bool:
@@ -32,11 +32,11 @@ def is_process_running(container_id: str, proc_name: str) -> bool:
 
 
 def docker_ps() -> str:
-    return sp.run(['sudo', 'docker', 'ps'], capture_output=True, text=True).stdout
+    return sp.run(['docker', 'ps'], capture_output=True, text=True).stdout
 
 
 def copy_to_container(container_id: str, host_path: str, container_path: str):
-    sp.run(['sudo', 'docker', 'cp', host_path,
+    sp.run(['docker', 'cp', host_path,
            f'{container_id}:{container_path}'], capture_output=True, text=True)
 
 

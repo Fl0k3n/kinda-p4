@@ -1,6 +1,10 @@
+import os
+
 from Kathara.model.Lab import Lab
 
+import util.containerutils as cutils
 from net.KatharaBackedNet import KatharaBackedCluster
+from net.util import simple_switch_CLI
 from topology.KindaSdnGenerator import KindaSdnTopologyGenerator
 from topology.Node import (ExternalDeviceMeta, HostMeta, IncSwitchMeta,
                            K8sNodeMeta)
@@ -10,19 +14,24 @@ from topology.Tree import TreeTopologyBuilder
 
 network = Lab("tree")
 
-topology = TreeTopologyBuilder(
+
+def default_inc_switch_meta() -> IncSwitchMeta:
+    return IncSwitchMeta(simple_switch_cli_commands=simple_switch_CLI('mirroring_add 1 1'))
+
+
+topo_builder = TreeTopologyBuilder(
     network,
     root_name="external",
     device_definitions=[
         Def("external", ExternalDeviceMeta(default_route_via="r0")),
-        Def("r0", IncSwitchMeta()),
-        Def("r1", IncSwitchMeta()),
-        Def("r2", IncSwitchMeta()),
-        Def("r3", IncSwitchMeta()),
-        Def("r4", IncSwitchMeta()),
-        Def("r5", IncSwitchMeta()),
-        Def("r6", IncSwitchMeta()),
-        Def("r7", IncSwitchMeta()),
+        Def("r0", default_inc_switch_meta()),
+        Def("r1", default_inc_switch_meta()),
+        Def("r2", default_inc_switch_meta()),
+        Def("r3", default_inc_switch_meta()),
+        Def("r4", default_inc_switch_meta()),
+        Def("r5", default_inc_switch_meta()),
+        Def("r6", default_inc_switch_meta()),
+        Def("r7", default_inc_switch_meta()),
         Def("w1", K8sNodeMeta.Worker()),
         Def("w2", K8sNodeMeta.Worker()),
         Def("w3", K8sNodeMeta.Worker()),
@@ -46,14 +55,30 @@ topology = TreeTopologyBuilder(
     ]
 )
 
-topology.setup_network()
+topo_builder.setup_network()
 
-KindaSdnTopologyGenerator().write_topology_file(
-    funcname="V4_gRpc_topo",
-    node_configs=topology.get_devices(),
-    path="/home/flok3n/develop/k8s_inc/src/kinda-sdn/generated/v4.go",
-)
 
 with KatharaBackedCluster("tree", network) as cluster:
-    k8s_nodes = topology.attach_and_build_cluster(cluster)
+    k8s_nodes = topo_builder.attach_and_build_cluster(cluster)
+    KindaSdnTopologyGenerator().write_topology_file(
+        funcname="V4_gRpc_topo",
+        node_configs=topo_builder.get_devices(),
+        k8s_nodes=k8s_nodes,
+        path="/home/flok3n/develop/k8s_inc/src/kinda-sdn/generated/v4.go",
+    )
+    for node in k8s_nodes.values():
+        os.system(
+            f"kubectl label node {node.internal_node_name} sname={node.name}")
+        os.system(
+            f"kubectl label node {node.internal_node_name} clustername={node.internal_node_name}")
+
+    cutils.copy_to_container(
+        k8s_nodes['c1'].container_id,
+        '/home/flok3n/develop/virtual/telemetry2/int-platforms/platforms/bmv2-mininet/int.p4app/utils/int_collector_logging.py',
+        '/int_collector_logging.py'
+    )
+    cutils.docker_exec_detached(
+        k8s_nodes['c1'].container_id, 'mkdir', '-p', '/tmp/p4app_logs')
+
     print('ok')
+    # input('press enter to exit')

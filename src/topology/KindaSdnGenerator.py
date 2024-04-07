@@ -1,3 +1,4 @@
+from core.K8sNode import K8sNode
 from topology.Node import NodeConfig, NodeMeta, NodeType, PeerNameToIpMac
 from util.codegen import CodeGenHelper
 
@@ -109,7 +110,23 @@ class KindaSdnTopologyGenerator:
             builder.with_node(node)
         return builder.build()
 
-    def write_topology_file(self, funcname: str, node_configs: list[NodeConfig], path: str):
+    def _replace_k8s_names_with_cluster_internal(self, node_configs: list[NodeConfig], k8s_nodes: dict[str, K8sNode]) -> list[NodeConfig]:
+        res = []
+        for nc in node_configs:
+            links = []
+            for link in nc.links:
+                if link.peer_name in k8s_nodes:
+                    links.append(link._replace(
+                        peer_name=k8s_nodes[link.peer_name].internal_node_name))
+                else:
+                    links.append(link)
+            new_name = k8s_nodes[nc.name].internal_node_name if nc.name in k8s_nodes else nc.name
+            res.append(nc._replace(name=new_name, links=links))
+        return res
+
+    def write_topology_file(self, funcname: str, k8s_nodes: dict[str, K8sNode], node_configs: list[NodeConfig], path: str):
+        node_configs = self._replace_k8s_names_with_cluster_internal(
+            node_configs, k8s_nodes)
         func_code = self._build_topology_func(funcname, node_configs)
         file_content = _topology_file_template.format(topology_func=func_code)
         with open(path, 'w') as f:

@@ -2,6 +2,8 @@ import os
 import subprocess as sp
 from typing import IO
 
+from util.logger import logger
+
 KUBECONFIG_PATH = os.path.join(os.environ['HOME'], '.kube', 'config')
 
 
@@ -37,4 +39,4 @@ def update_kubectl_cfg(cluster_name: str, kubeconfig_path: str):
 def delete_cluster(cluster_name: str):
     res = sp.run(['sudo', 'kind', 'delete', 'clusters',
                   cluster_name], capture_output=True, text=True)
-    print(res.stdout)
+    logger.info(res.stdout)

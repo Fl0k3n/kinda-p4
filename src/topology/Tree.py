@@ -12,6 +12,9 @@ from net.util import (container_id, execute_simple_switch_cmds,
 from topology.Builder import TopologyBuilder
 from topology.Node import (LinkConfig, NodeConfig, NodeMeta, NodeType,
                            PeerNameToIpMac)
+from util.containerutils import docker_exec_detached
+from util.iputils import Cidr, get_subnet
+from util.logger import logger
 from util.macs import mac_generator
 
 
@@ -79,6 +82,9 @@ class TreeTopologyBuilder(TopologyBuilder):
         cluster.build()
         self._run_after_cluster_built_actions()
         return k8s_nodes
+
+    def kathara_machines(self, *names: list[str]) -> list[KataharaMachine]:
+        return [self.network.get_machine(name) for name in names]
 
     def get_devices(self) -> list[NodeConfig]:
         res = []
@@ -196,9 +202,26 @@ class TreeTopologyBuilder(TopologyBuilder):
     def _run_after_cluster_built_actions(self):
         # at this point all interfaces are setup and we can configure them
         self._configure_interfaces()
+        self._execute_simple_switch_CLI_commands()
+        # in these devices routing should be fully p4-based, don't let OS get in the way
+        self._delete_OS_routes_in_inc_switches()
+
+    def _execute_simple_switch_CLI_commands(self):
+        for node in self._iter_nodes_bfs():
+            if node.meta.get_type() == NodeType.INC_SWITCH and node.meta.inc_switch_meta().simple_switch_cli_commands is not None:
+                docker_exec_detached(container_id(
+                    node.name, self.network.name), './s.sh')
+
+    def _delete_OS_routes_in_inc_switches(self):
         for node in self._iter_nodes_bfs():
             if node.meta.get_type() == NodeType.INC_SWITCH:
-                execute_simple_switch_cmds(node.name)
+                for (masked_ip, _) in node.connection_ip_macs.values():
+                    ip, mask = masked_ip.split('/')
+                    network_ip = get_subnet(
+                        Cidr(ipv4=ip, netmask=int(mask))).masked_ip
+                    run_in_kathara_machine(self.network.get_machine(node.name), [
+                        f'ip route del {network_ip}',
+                    ], self.network.name)
 
     def _configure_interfaces(self):
         for node in self._iter_nodes_bfs():
@@ -309,7 +332,7 @@ class TreeTopologyBuilder(TopologyBuilder):
 
         if unused := [d for d, used in zip(defs, used_defs) if not used]:
             for d in unused:
-                print(f'device is defined but not connected: {d}')
+                logger.error(f'device is defined but not connected: {d}')
             assert False
 
         return root

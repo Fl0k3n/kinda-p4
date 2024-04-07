@@ -13,6 +13,7 @@ from core.InternetAccessManager import InternetAccessManager
 from core.K8sNode import ControlNode, K8sNode, WorkerNode
 from core.NodeInitializer import NodeInitializer
 from util.iputils import NetIface
+from util.logger import logger
 from util.p4 import P4Params
 
 
@@ -95,34 +96,35 @@ class ClusterBuilder:
 
     def build(self):
         if self.built:
-            print("Cluster is already built")
+            logger.warn("Cluster is already built")
             return
 
-        print('Building cluster...')
+        logger.info('Building cluster...')
+        self._try_requesting_more_OS_resources_if_needed()
         self._run_cluster()
 
-        print("Updating kubectl...")
+        logger.info("Updating kubectl...")
         self._update_kubectl_cfg()
 
-        print("Initializing nodes...")
+        logger.info("Initializing nodes...")
         self._init_nodes()
 
-        print("Setting up cluster networking...")
+        logger.info("Setting up cluster networking...")
         self._setup_connections()
         self._update_cluster_address_translations()
         self._setup_pod_traffic_tunneling()
         self._setup_p4_nics()
 
         if self.internet_access_requested:
-            print("Provisioning internet access...")
+            logger.info("Provisioning internet access...")
             self.internet_access_mgr.provision_internet_access(
                 self.controls + self.workers)
 
-        print("Writing config for kinda CLI")
+        logger.info("Writing config for kinda CLI")
         self._write_kinda_config()
 
         self.built = True
-        print("Cluster ready")
+        logger.info("Cluster ready")
 
     def destroy(self):
         if self.internet_access_requested:
@@ -170,6 +172,15 @@ class ClusterBuilder:
         for route in routes:
             iputils.add_route(iputils.HOST_NS, route, container_iface.ipv4)
         self.simple_host_connections.append((host_iface, routes))
+
+    def _try_requesting_more_OS_resources_if_needed(self):
+        if len(self.worker_nodes) + len(self.control_nodes) < 3:
+            return
+        # https://kind.sigs.k8s.io/docs/user/known-issues/#pod-errors-due-to-too-many-open-files
+        logger.info(
+            'increasing inotify resources to mitigate "too many open files" errors')
+        os.system("sudo sysctl fs.inotify.max_user_watches=524288")
+        os.system("sudo sysctl fs.inotify.max_user_instances=512")
 
     def _setup_connections(self):
         bridge_to_slaves: dict[BridgeInfo, list[NetIface]] = {}
@@ -360,8 +371,7 @@ class ClusterBuilder:
                 try:
                     self._await_tasks(tasks, self._NODE_INIT_TIMEOUT_SECONDS)
                 except Exception as e:
-                    print('Failed to setup p4 NICs')
-                    print(e)
+                    logger.error('Failed to setup p4 NICs', exc_info=e)
 
     def _await_tasks(self, tasks: list[Future[Any]], timeout: float = None):
         tasks_result = wait(tasks, timeout=timeout)
@@ -370,8 +380,9 @@ class ClusterBuilder:
             raise Exception("some tasks didn't finish")
 
         if failed_tasks := [task for task in tasks if task.exception() is not None]:
-            print("some tasks finished with an exception")
-            raise failed_tasks[0].exception()
+            ex = failed_tasks[0].exception()
+            logger.error("some tasks finished with an exception", exc_info=ex)
+            raise ex
 
     def _assert_valid(self, iface: NetIface):
         for net in self._FORBIDDEN_NETWORKS:
@@ -398,8 +409,8 @@ class ClusterBuilder:
             with open(self._KINDA_CONFIG_PATH, 'w') as f:
                 json.dump(cfg, f)
         except Exception as e:
-            print('Failed to write kinda config, CLI won\'t work as expected')
-            print(e)
+            logger.error(
+                'Failed to write kinda config, CLI won\'t work as expected', exc_info=e)
 
     def _create_tunnel_subnet_generator(self) -> Generator[tuple[int, int], None, None]:
         for subnet in range(0, 255):
