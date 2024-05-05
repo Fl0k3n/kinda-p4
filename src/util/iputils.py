@@ -37,9 +37,9 @@ class Cidr(NamedTuple):
 
 
 class TrafficControlInfo(NamedTuple):
-    latency_ms: int | None
-    rate_kbitps: int | None
-    burst_kbitps: int | None
+    latency_ms: int
+    rate_kbitps: int
+    burst_kbitps: int
 
 
 @dataclass
@@ -230,8 +230,8 @@ def flush_established_connections(netns: Netns):
 
 def apply_egress_traffic_control(netns: Netns, iface: NetIface):
     tc = iface.egress_traffic_control
-    if all(field is None for field in tc):
-        return
+    if any(field is None for field in tc):
+        raise Exception('traffic control requires all fields to be set')
 
     command = f'tc qdisc add dev {iface.name} root tbf'
     if tc.latency_ms is not None:

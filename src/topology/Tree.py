@@ -13,7 +13,7 @@ from topology.Builder import TopologyBuilder
 from topology.Node import (LinkConfig, NodeConfig, NodeMeta, NodeType,
                            PeerNameToIpMac)
 from util.containerutils import docker_exec_detached
-from util.iputils import Cidr, get_subnet
+from util.iputils import Cidr, TrafficControlInfo, get_subnet
 from util.logger import logger
 from util.macs import mac_generator
 
@@ -49,10 +49,12 @@ class TreeTopologyBuilder(TopologyBuilder):
     '''
 
     def __init__(self, network: KatharaLab, root_name: str,
-                 device_definitions: list[TreeNodeDefinition], links: list[NetworkLink]) -> None:
+                 device_definitions: list[TreeNodeDefinition],
+                 links: list[NetworkLink], node_traffic_control: TrafficControlInfo = None) -> None:
         self.root = self._make_tree(root_name, device_definitions, links)
         self.nodes = self._build_node_dict()
         self.network = network
+        self.node_traffic_control = node_traffic_control
 
     def setup_network(self):
         kathara_bridges = self._kathara_bridge_gen()
@@ -165,10 +167,13 @@ class TreeTopologyBuilder(TopologyBuilder):
             cluster.connect_with_container(
                 node.name,
                 node_iface=NetIface(node_iface_name, ipv4=node_ip,
-                                    netmask=int(node_mask), mac=node_mac),
+                                    netmask=int(node_mask), mac=node_mac,
+                                    egress_traffic_control=self.node_traffic_control),
                 container_id=container_id(parent.name, self.network.name),
                 container_iface=NetIface(
-                    parent_iface_name, ipv4=parent_ip, netmask=int(parent_mask), mac=parent_mac)
+                    parent_iface_name, ipv4=parent_ip,
+                    netmask=int(parent_mask), mac=parent_mac,
+                    egress_traffic_control=self.node_traffic_control)
             )
         return k8s_nodes
 

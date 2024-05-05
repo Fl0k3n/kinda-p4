@@ -1,5 +1,8 @@
+from typing import NamedTuple
+
 from core.K8sNode import K8sNode
-from topology.Node import NodeConfig, NodeMeta, NodeType, PeerNameToIpMac
+from topology.Node import (FORWARD_PROGRAM, TELEMETRY_PROGRAM, NodeConfig,
+                           NodeType)
 from util.codegen import CodeGenHelper
 
 _external_device_template = \
@@ -19,6 +22,7 @@ _inc_switch_template = \
 {links}
         }},
         "{ip}:{port}",
+        "{program}",
     )'''
 
 _host_template = \
@@ -31,13 +35,34 @@ _host_template = \
         }},	
     }}'''
 
+_p4_artifacts_template = \
+    '''{{
+    Arch: "{arch}",
+    P4InfoPath: "{p4_info_path}",
+    P4PipelinePath: "{p4_pipeline_path}",
+}}'''
+
+_p4_program_template = \
+    '''{var} := &model.P4ProgramDetails{{
+        Name: "{name}",
+        ImplementedInterfaces: []string{{
+{implemented_interfaces}
+        }},
+        Artifacts: []model.P4Artifacts{{
+{artifacts} 
+        }},
+    }}'''
+
 _topology_func_template = \
-    '''func {func_name}() *model.Topology {{
-{vars_code}
+    '''func {func_name}() (*model.Topology, []*model.P4ProgramDetails) {{
+{device_vars_code}
+{program_vars_code}
     return &model.Topology{{
         Devices: []model.Device{{
-{vars}
+{device_vars}
         }},
+    }}, []*model.P4ProgramDetails{{
+{p4_program_vars}
     }}
 }}'''
 
@@ -52,21 +77,74 @@ import "github.com/Fl0k3n/k8s-inc/kinda-sdn/model"
 '''
 
 
+class P4Artifacts(NamedTuple):
+    arch: str
+    p4_info_path: str
+    p4_pipeline_path: str
+
+
+class P4ProgramDetails(NamedTuple):
+    name: str
+    implemented_interfaces: list[str]
+    artifacts: list[P4Artifacts]
+
+
 class KindaSdnTopologyGenerator:
 
     class TopologyFunctionBuilder:
         def __init__(self, function_name: str) -> None:
             self.function_name = function_name
             self.devices: list[NodeConfig] = []
+            self.default_programs = [
+                P4ProgramDetails(
+                    name=FORWARD_PROGRAM,
+                    implemented_interfaces=[],
+                    artifacts=[P4Artifacts(
+                        arch="bmv2",
+                        p4_info_path="/home/flok3n/develop/virtual/telemetry2/int-platforms/p4src/int_v6.0/int.txt",
+                        p4_pipeline_path="/home/flok3n/develop/virtual/telemetry2/int-platforms/p4src/int_v6.0/int.json"
+                    )]
+                ),
+                P4ProgramDetails(
+                    name=TELEMETRY_PROGRAM,
+                    implemented_interfaces=["inc.kntp.com/v1alpha1/telemetry"],
+                    artifacts=[P4Artifacts(
+                        arch="bmv2",
+                        p4_info_path="/home/flok3n/develop/virtual/telemetry2/int-platforms/p4src/int_v6.0/int.txt",
+                        p4_pipeline_path="/home/flok3n/develop/virtual/telemetry2/int-platforms/p4src/int_v6.0/int.json"
+                    )]
+                )
+            ]
+            self.programs = [*self.default_programs]
 
         def _build_external_device(self, var: str, name: str, links: str) -> str:
             return _external_device_template.format(var=var, name=name, links=links)
 
-        def _build_inc_switch(self, var: str, name: str, links: str, grpc_port: int) -> str:
-            return _inc_switch_template.format(var=var, name=name, links=links, ip="127.0.0.1", port=str(grpc_port))
+        def _build_inc_switch(self, var: str, name: str, links: str, grpc_port: int, program_name: str) -> str:
+            return _inc_switch_template.format(var=var, name=name, links=links, ip="127.0.0.1", port=str(grpc_port), program=program_name)
 
         def _build_host(self, var: str, name: str, links: str) -> str:
             return _host_template.format(var=var, name=name, links=links)
+
+        def _build_p4_artifacts(self, artifacts: P4Artifacts) -> str:
+            return _p4_artifacts_template.format(arch=artifacts.arch, p4_info_path=artifacts.p4_info_path,
+                                                 p4_pipeline_path=artifacts.p4_pipeline_path)
+
+        def _build_p4_program_details(self, var: str, details: P4ProgramDetails) -> str:
+            code = CodeGenHelper()
+            for artifact in details.artifacts:
+                for line in (self._build_p4_artifacts(artifact) + ',').splitlines():
+                    code.append(line)
+            artifact_code = code.join_indented(3)
+            code = CodeGenHelper()
+            ifaces = ', '.join(
+                f'"{x}"' for x in details.implemented_interfaces)
+            if details.implemented_interfaces:
+                ifaces += ','
+            code.append(ifaces)
+            interfaces_code = code.join_indented(3)
+            return _p4_program_template.format(
+                var=var, name=details.name, implemented_interfaces=interfaces_code, artifacts=artifact_code)
 
         def build(self) -> str:
             code = CodeGenHelper()
@@ -89,16 +167,29 @@ class KindaSdnTopologyGenerator:
                     meta = dev.inc_switch_meta()
                     assert meta.grpc_port is not None
                     code.append(self._build_inc_switch(
-                        var_name, name, links_code_gen.join_indented(3), meta.grpc_port))
+                        var_name, name, links_code_gen.join_indented(3), meta.grpc_port, meta.program))
                 else:
                     raise Exception("Unexpected device")
-            vars_gen = CodeGenHelper()
-            vars_gen.append(", ".join(vars) + ",")
+
+            program_vars_code = CodeGenHelper()
+            program_vars = []
+            for i, program in enumerate(self.programs):
+                var = f'prog{i}'
+                program_vars.append(var)
+                program_vars_code.append(
+                    self._build_p4_program_details(var, program))
+
+            device_vars_gen = CodeGenHelper()
+            device_vars_gen.append(", ".join(vars) + ",")
+            program_vars_gen = CodeGenHelper()
+            program_vars_gen.append(", ". join(program_vars) + ",")
+
             return _topology_func_template.format(
                 func_name=self.function_name,
-                vars_code=code.join_indented(1),
-                vars=vars_gen.join_indented(3)
-            )
+                device_vars_code=code.join_indented(1),
+                program_vars_code=program_vars_code.join_indented(1),
+                device_vars=device_vars_gen.join_indented(3),
+                p4_program_vars=program_vars_gen.join_indented(2))
 
         def with_node(self, node_config: NodeConfig) -> "KindaSdnTopologyGenerator.TopologyFunctionBuilder":
             self.devices.append(node_config)
@@ -124,9 +215,10 @@ class KindaSdnTopologyGenerator:
             res.append(nc._replace(name=new_name, links=links))
         return res
 
-    def write_topology_file(self, funcname: str, k8s_nodes: dict[str, K8sNode], node_configs: list[NodeConfig], path: str):
-        node_configs = self._replace_k8s_names_with_cluster_internal(
-            node_configs, k8s_nodes)
+    def write_topology_file(self, funcname: str, k8s_nodes: dict[str, K8sNode], node_configs: list[NodeConfig], path: str, rename=True):
+        if rename:
+            node_configs = self._replace_k8s_names_with_cluster_internal(
+                node_configs, k8s_nodes)
         func_code = self._build_topology_func(funcname, node_configs)
         file_content = _topology_file_template.format(topology_func=func_code)
         with open(path, 'w') as f:

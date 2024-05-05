@@ -8,4 +8,5 @@ apt install -y --no-install-recommends \
     net-tools \
     tcpdump \
     dnsutils \
+    iperf3 \
     vim

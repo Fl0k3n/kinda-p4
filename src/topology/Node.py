@@ -76,16 +76,21 @@ class K8sNodeMeta(NodeMeta):
         return NodeType.K8S
 
 
+FORWARD_PROGRAM = "forward"
+TELEMETRY_PROGRAM = "telemetry"
+
+
 class IncSwitchMeta(NodeMeta):
     GRPC_PORT_COUNTER = 0
     GRPC_LOCAL_BASE_PORT = 9560
     COMMAND = "simple_switch_grpc"
 
-    def __init__(self, image="flok3n/p4c-epoch_thrift:latest", program: str = None, open_grpc=True,
-                 grpc_port: Optional[int] = None, grpc_internal_port=9559,
+    def __init__(self, image="flok3n/p4c-epoch_thrift:latest", program: str = TELEMETRY_PROGRAM, open_grpc=True,
+                 grpc_port: Optional[int] = None, grpc_internal_port=9559, start_program=False,
                  startup_commands: list[str] = None, simple_switch_cli_commands: list[str] = None) -> None:
         self.image = image
-        self.program = None
+        self.program = program
+        self.start_program = start_program
         self.open_grpc = open_grpc
         self.grpc_internal_port = grpc_internal_port
         self.simple_switch_cli_commands = simple_switch_cli_commands
@@ -103,7 +108,7 @@ class IncSwitchMeta(NodeMeta):
         cmd = self.COMMAND
         for i, iface in enumerate(iface_names):
             cmd += f" -i {i+1}@{iface}"
-        cmd += (" --no-p4" if self.program is None else " " + self.program)
+        cmd += f' {self.program}' if self.start_program else ' --no-p4'
         return cmd
 
     def get_type(self) -> NodeType:
