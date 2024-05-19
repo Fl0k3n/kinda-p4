@@ -49,6 +49,7 @@ class NetIface:
     netmask: int
     egress_traffic_control: TrafficControlInfo | None = None
     mac: str | None = None
+    mtu: int | None = None
 
     @property
     def cidr(self) -> Cidr:
@@ -92,6 +93,10 @@ def random_iface_suffix() -> str:
 def create_veth_pair(netns: Netns, iface1: NetIface, iface2: NetIface, set_up: bool = False):
     run_in_namespace(netns, 'ip', 'link', 'add', iface1.name,
                      'type', 'veth', 'peer', 'name', iface2.name)
+    if iface1.mtu is not None:
+        set_iface_mtu(netns, iface1)
+    if iface2.mtu is not None:
+        set_iface_mtu(netns, iface2)
     if set_up:
         set_iface_state(netns, iface1.name, True)
         set_iface_state(netns, iface2.name, True)
@@ -268,3 +273,9 @@ def delete_iface(netns: Netns, iface: NetIface):
 
 def delete_namespace(parent_ns: Netns, ns_to_delete: str):
     run_in_namespace(parent_ns, 'ip', 'netns', 'delete', ns_to_delete)
+
+
+def set_iface_mtu(netns: Netns, iface: NetIface):
+    if iface.mtu is not None:
+        run_in_namespace(netns, 'ip', 'link', 'set', 'dev',
+                         iface.name, 'mtu', f'{iface.mtu}')

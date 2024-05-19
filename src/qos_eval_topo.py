@@ -1,25 +1,25 @@
-import os
 
 from Kathara.model.Lab import Lab
 
-import util.containerutils as cutils
 from net.KatharaBackedNet import KatharaBackedCluster
 from net.util import simple_switch_CLI
 from topology.KindaSdnGenerator import KindaSdnTopologyGenerator
-from topology.Node import (FORWARD_PROGRAM, TELEMETRY_PROGRAM,
-                           ExternalDeviceMeta, HostMeta, IncSwitchMeta,
+from topology.Node import (FORWARD_PROGRAM, TELEMETRY_PROGRAM, IncSwitchMeta,
                            K8sNodeMeta)
 from topology.Tree import NetworkLink as Link
 from topology.Tree import TreeNodeDefinition as Def
 from topology.Tree import TreeTopologyBuilder
+from util.containerutils import copy_to_container
 from util.iputils import TrafficControlInfo
 from util.nodenamereplacer import update_node_names_in_files
 
 network = Lab("tree")
 
-rate_limit_kbps = 800
+rate_limit_kbps = 8000
 inc_switch_rate_limit_cmds = [
     f'set_queue_rate {rate_limit_kbps // 8}', 'set_queue_depth 100']
+
+NODE_MTU = 1300
 
 topology = TreeTopologyBuilder(
     network,
@@ -55,18 +55,18 @@ topology = TreeTopologyBuilder(
         Def("r10", IncSwitchMeta(
             program=FORWARD_PROGRAM,
             simple_switch_cli_commands=simple_switch_CLI('mirroring_add 1 1', *inc_switch_rate_limit_cmds))),
-        Def("w1", K8sNodeMeta.Worker()),
-        Def("w2", K8sNodeMeta.Worker()),
-        Def("w3", K8sNodeMeta.Worker()),
-        Def("w4", K8sNodeMeta.Worker()),
-        Def("w5", K8sNodeMeta.Worker()),
-        Def("w6", K8sNodeMeta.Worker()),
-        Def("w7", K8sNodeMeta.Worker()),
-        Def("w8", K8sNodeMeta.Worker()),
-        Def("w9", K8sNodeMeta.Worker()),
-        Def("w10", K8sNodeMeta.Worker()),
-        Def("w11", K8sNodeMeta.Worker()),
-        Def("w12", K8sNodeMeta.Worker()),
+        Def("w1", K8sNodeMeta.Worker(mtu=NODE_MTU)),
+        Def("w2", K8sNodeMeta.Worker(mtu=NODE_MTU)),
+        Def("w3", K8sNodeMeta.Worker(mtu=NODE_MTU)),
+        Def("w4", K8sNodeMeta.Worker(mtu=NODE_MTU)),
+        Def("w5", K8sNodeMeta.Worker(mtu=NODE_MTU)),
+        Def("w6", K8sNodeMeta.Worker(mtu=NODE_MTU)),
+        Def("w7", K8sNodeMeta.Worker(mtu=NODE_MTU)),
+        Def("w8", K8sNodeMeta.Worker(mtu=NODE_MTU)),
+        Def("w9", K8sNodeMeta.Worker(mtu=NODE_MTU)),
+        Def("w10", K8sNodeMeta.Worker(mtu=NODE_MTU)),
+        Def("w11", K8sNodeMeta.Worker(mtu=NODE_MTU)),
+        Def("w12", K8sNodeMeta.Worker(mtu=NODE_MTU)),
         Def("c1", K8sNodeMeta.Control()),
     ],
     links=[
@@ -110,15 +110,39 @@ with KatharaBackedCluster("tree", network) as cluster:
         k8s_nodes=k8s_nodes,
         path="/home/flok3n/develop/k8s_inc/src/kinda-sdn/generated/measure_topo.go",
     )
-    cutils.copy_to_container(
-        k8s_nodes['w1'].container_id,
-        '/home/flok3n/develop/k8s_inc/src/eval/measure/latency_sender.py',
-        '/latency_sender.py'
+    update_node_names_in_files(
+        k8s_nodes,
+        '/home/flok3n/develop/k8s_inc/src/inc-operator/config/example/collector.yaml',
+        '/home/flok3n/develop/k8s_inc/src/inc-operator/config/example/intdepl_http.yaml',
+        '/home/flok3n/develop/k8s_inc/src/inc-operator/config/example/intdepl_udp.yaml'
     )
-    cutils.copy_to_container(
-        k8s_nodes['w2'].container_id,
-        '/home/flok3n/develop/k8s_inc/src/eval/measure/latency_receiver.py',
-        '/latency_receiver.py'
-    )
+    # if receiver is scheduled on w9 then one of senders should be on w10 and vice versa
+    for n in ['w3', 'w9', 'w10']:
+        copy_to_container(
+            k8s_nodes[n].container_id,
+            '/home/flok3n/develop/k8s_inc_analysis/iperf_tcp_increasing.sh',
+            'iperf_tcp_increasing.sh'
+        )
+        copy_to_container(
+            k8s_nodes[n].container_id,
+            '/home/flok3n/develop/k8s_inc_analysis/iperf_tcp_constant.sh',
+            'iperf_tcp_constant.sh'
+        )
+        copy_to_container(
+            k8s_nodes[n].container_id,
+            '/home/flok3n/develop/k8s_inc_analysis/iperf_udp_increasing.sh',
+            'iperf_udp_inc.sh'
+        )
+        copy_to_container(
+            k8s_nodes[n].container_id,
+            '/home/flok3n/develop/k8s_inc_analysis/iperf_udp_constant.sh',
+            'iperf_udp_const.sh'
+        )
+    for n in ['w8', 'w11']:
+        copy_to_container(
+            k8s_nodes[n].container_id,
+            '/home/flok3n/develop/k8s_inc_analysis/iperf_s.sh',
+            'iperf_s.sh'
+        )
     print('ok')
     # input('press enter to exit')

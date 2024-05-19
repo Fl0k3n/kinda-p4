@@ -61,12 +61,13 @@ class NodeConfig(NamedTuple):
 
 
 class K8sNodeMeta(NodeMeta):
-    def __init__(self, control_plane: bool) -> None:
+    def __init__(self, control_plane: bool, mtu: int = None) -> None:
         self.control_plane = control_plane
+        self.mtu = mtu
 
     @staticmethod
-    def Worker() -> "K8sNodeMeta":
-        return K8sNodeMeta(control_plane=False)
+    def Worker(mtu=None) -> "K8sNodeMeta":
+        return K8sNodeMeta(control_plane=False, mtu=mtu)
 
     @staticmethod
     def Control() -> "K8sNodeMeta":

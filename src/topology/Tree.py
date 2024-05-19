@@ -168,7 +168,8 @@ class TreeTopologyBuilder(TopologyBuilder):
                 node.name,
                 node_iface=NetIface(node_iface_name, ipv4=node_ip,
                                     netmask=int(node_mask), mac=node_mac,
-                                    egress_traffic_control=self.node_traffic_control),
+                                    egress_traffic_control=self.node_traffic_control,
+                                    mtu=meta.mtu),
                 container_id=container_id(parent.name, self.network.name),
                 container_iface=NetIface(
                     parent_iface_name, ipv4=parent_ip,
@@ -281,6 +282,8 @@ class TreeTopologyBuilder(TopologyBuilder):
                     run_iface_names[i] = f'eth{counter}'
                     counter += 1
             commands.append(meta.get_run_command(run_iface_names))
+        else:
+            raise Exception(f'unexpected note type: {node_type}')
         return commands
 
     def _kathara_bridge_gen(self):
