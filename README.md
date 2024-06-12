@@ -4,7 +4,7 @@ Library for emulation of Kubernetes clusters in complex container-based virtual 
 
 ## Why may I need it?
 
-Research related to incorporating network information into Kubernetes. Library was designed as a part of MSc focused on utilizing in-network computing (programmable switches) in Kubernetes. Can run tens of emulated Kubernetes nodes with emulated network devices on customer-grade PCs.
+Research related to incorporating network information into Kubernetes. Library was designed as a part of MSc focused on utilizing in-network computing (programmable switches) in Kubernetes. Tens of emulated Kubernetes nodes with emulated network devices can be run on consumer-grade machines (low CPU usage, about 700MB RAM per k8s node).
 
 ## Requirements
 - Linux with ip toolkit, iptables, kubectl and docker (tested on ubuntu with 5.19 kernel)
@@ -107,4 +107,6 @@ For errors generarated by Kind refer to [their known issues](https://kind.sigs.k
 Kubernetes nodes are ubuntu based and come preinstalled with various utilities such as `ping`, `traceroute`, `tcpdump`, `iptables` and `ip` toolkit. To debug deployments usage of node affinity may help, you can assign label to a node by:
 
 `kubectl label node $(kinda reverse <node name>) key=value`
+
+Besides that, Wireshark may be useful to see what traffic is sent through Kathara bridges in the host namespace.
 
