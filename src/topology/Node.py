@@ -32,7 +32,7 @@ class NodeMeta(ABC):
         return self
 
     def simple_host_meta(self) -> "SimpleHostMeta":
-        assert self.get_type() in (NodeType.HOST, NodeType.EXTERNAL)
+        assert self.get_type() in (NodeType.HOST, NodeType.EXTERNAL, NodeType.NET)
         return self
 
     def inc_switch_meta(self) -> "IncSwitchMeta":
@@ -116,11 +116,6 @@ class IncSwitchMeta(NodeMeta):
         return NodeType.INC_SWITCH
 
 
-class NetDeviceMeta(NodeMeta):
-    def get_type(self) -> NodeType:
-        return NodeType.NET
-
-
 class SimpleHostMeta(NodeMeta):
     def __init__(self, default_route_via: str = None, mtu: int = None,
                  image="kathara/base", startup_commands: list[str] = None) -> None:
@@ -128,6 +123,11 @@ class SimpleHostMeta(NodeMeta):
         self.startup_commands = startup_commands if startup_commands is not None else []
         self.default_route_via = default_route_via
         self.mtu = None
+
+
+class NetDeviceMeta(SimpleHostMeta):
+    def get_type(self) -> NodeType:
+        return NodeType.NET
 
 
 class ExternalDeviceMeta(SimpleHostMeta):

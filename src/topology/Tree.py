@@ -7,8 +7,7 @@ from Kathara.model.Machine import Machine as KataharaMachine
 
 from core.ClusterBuilder import ClusterBuilder, NetIface
 from core.K8sNode import K8sNode
-from net.util import (container_id, execute_simple_switch_cmds,
-                      run_in_kathara_machine)
+from net.util import container_id, run_in_kathara_machine
 from topology.Builder import TopologyBuilder
 from topology.Node import (LinkConfig, NodeConfig, NodeMeta, NodeType,
                            PeerNameToIpMac)
@@ -110,7 +109,7 @@ class TreeTopologyBuilder(TopologyBuilder):
 
     def _set_machine_meta(self, node: TreeNode, machine: KataharaMachine):
         node_type = node.meta.get_type()
-        if node_type == NodeType.HOST or node_type == NodeType.EXTERNAL:
+        if node_type == NodeType.HOST or node_type == NodeType.EXTERNAL or node_type == NodeType.NET:
             meta = node.meta.simple_host_meta()
             machine.update_meta(args={
                 "image": meta.image,
@@ -241,7 +240,7 @@ class TreeTopologyBuilder(TopologyBuilder):
     def _build_configure_interfaces_commands(self, node: TreeNode) -> list[str]:
         commands = []
         node_type = node.meta.get_type()
-        if node_type == NodeType.HOST or node_type == NodeType.EXTERNAL:
+        if node_type == NodeType.HOST or node_type == NodeType.EXTERNAL or node_type == NodeType.NET:
             meta = node.meta.simple_host_meta()
             prev_ifaces = 0
             if node.parent is not None:

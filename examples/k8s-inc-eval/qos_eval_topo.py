@@ -19,7 +19,7 @@ rate_limit_kbps = 8000
 inc_switch_rate_limit_cmds = [
     f'set_queue_rate {rate_limit_kbps // 8}', 'set_queue_depth 100']
 
-NODE_MTU = 1300
+NODE_MTU = 1100
 
 topology = TreeTopologyBuilder(
     network,

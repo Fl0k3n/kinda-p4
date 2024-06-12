@@ -1,4 +1,5 @@
 import os
+import signal
 
 from Kathara.manager.Kathara import Kathara
 from Kathara.model.Lab import Lab as KatharaLab
@@ -32,6 +33,11 @@ class KatharaBackedCluster:
         return cluster
 
     def __exit__(self, *args):
+        def handler(sig, frame):
+            pass
+        signal.signal(signal.SIGINT, handler)
+        print('Press Ctrl+C to exit')
+        signal.pause()
         self._cleanup()
 
     def _setup(self, first_try: bool) -> ClusterBuilder:
@@ -52,7 +58,6 @@ class KatharaBackedCluster:
         Kathara.get_instance().wipe()
 
 
-# deprecated
 def container_id(machine: KatharaMachine | str) -> str:
     if isinstance(machine, KatharaMachine):
         return machine.api_object.id
